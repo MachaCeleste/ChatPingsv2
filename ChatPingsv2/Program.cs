@@ -1,14 +1,19 @@
-﻿using Newtonsoft.Json;
-using FoxCrypto;
+﻿using FoxCrypto;
+using Newtonsoft.Json;
+using System.Diagnostics;
+using System.Reflection;
 using System.Text;
 
 namespace ChatPingsv2
 {
     class Program
     {
+        private static string _filePath;
         private static string? _passkey;
         static async Task Main()
         {
+            FileVersionInfo fileInfo = FileVersionInfo.GetVersionInfo(Assembly.GetEntryAssembly().Location);
+            _filePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), fileInfo.CompanyName, fileInfo.ProductName);
             await Login();
             Console.WriteLine("Bot ready.");
             while (true)
@@ -87,7 +92,9 @@ namespace ChatPingsv2
 
         private static async Task Login()
         {
-            TwitchBot.Config config = File.Exists("config.dat") ? LoadConfig() : null;
+            if (!File.Exists(_filePath))
+                Directory.CreateDirectory(_filePath);
+            TwitchBot.Config config = File.Exists(Path.Combine(_filePath, "config.dat")) ? LoadConfig() : null;
             if (config == null)
                 new TwitchBot();
             else 
@@ -128,7 +135,7 @@ namespace ChatPingsv2
                 if (pass == "exit" || pass == "cancel")
                     Environment.Exit(0);
                 _passkey = Crypto.GetPasskey(pass);
-                string input = File.ReadAllText("config.dat");
+                string input = File.ReadAllText(Path.Combine(_filePath, "config.dat"));
                 json = Crypto.Run(input, _passkey, "dec");
                 if (json == null)
                 {
@@ -163,7 +170,7 @@ namespace ChatPingsv2
             string? output = Crypto.Run(json, _passkey);
             try
             {
-                File.WriteAllText("config.dat", output);
+                File.WriteAllText(Path.Combine(_filePath, "config.dat"), output);
             }
             catch (Exception ex)
             {
