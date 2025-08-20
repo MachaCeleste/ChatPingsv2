@@ -12,8 +12,12 @@ namespace ChatPingsv2
         public DateTime? lastMessage;
         public DateTime? lastRedeem;
 
+        private Dictionary<SoundFile, SoundPlayer> soundPlayers;
+
         public TwitchBot(Token? token = null) : base(token)
         {
+            soundPlayers = new Dictionary<SoundFile, SoundPlayer>();
+            this.InitSounds();
             TwitchBot.Singleton = this;
         }
 
@@ -23,6 +27,7 @@ namespace ChatPingsv2
             {
                 Client.OnMessageReceived += Client_OnMessageReceived;
                 EventSub.ChannelPointsCustomRewardRedemptionAdd += EventSub_ChannelPointsCustomRewardRedemptionAdd;
+                //EventSub.ChannelFollow += EventSub_ChannelFollow;
                 await this.ConnectAsync();
             }
             catch (Exception ex)
@@ -30,6 +35,20 @@ namespace ChatPingsv2
                 Console.WriteLine(ex.ToString());
             }
         }
+
+        public void InitSounds()
+        {
+            soundPlayers.Clear();
+            foreach (SoundFile soundFile in Enum.GetValues(typeof(SoundFile)))
+            {
+                soundPlayers.Add(soundFile, new SoundPlayer($".\\{soundFile.ToString().ToLower()}.wav"));
+            }
+        }
+
+        //private async Task EventSub_ChannelFollow(object sender, TwitchLib.EventSub.Websockets.Core.EventArgs.Channel.ChannelFollowArgs args)
+        //{
+        //    PlaySound(SoundFile.Follow);// Does this need a cooldown?
+        //}
 
         private async Task EventSub_ChannelPointsCustomRewardRedemptionAdd(object sender, TwitchLib.EventSub.Websockets.Core.EventArgs.Channel.ChannelPointsCustomRewardRedemptionArgs args)
         {
@@ -40,7 +59,7 @@ namespace ChatPingsv2
             if (lastRedeem != null && (DateTime.Now - lastRedeem) < TimeSpan.FromSeconds((double)config.RedeemCd))
                 return;
             lastRedeem = DateTime.Now;
-            PlaySound(1);
+            PlaySound(SoundFile.Redeem);
         }
 
         private void Client_OnMessageReceived(object? sender, TwitchLib.Client.Events.OnMessageReceivedArgs e)
@@ -49,17 +68,12 @@ namespace ChatPingsv2
             if ((lastMessage != null && (DateTime.Now - lastMessage) < TimeSpan.FromSeconds((double)config.MessageCd)) || config.IgnoreList.Contains(e.ChatMessage.Username))
                 return;
             lastMessage = DateTime.Now;
-            PlaySound(0);
+            PlaySound(SoundFile.Message);
         }
 
-        private static void PlaySound(int sound = 0)
+        private void PlaySound(SoundFile fileName)
         {
-            List<string> sounds = new List<string>
-            {
-                ".\\message.wav",
-                ".\\redeem.wav"
-            };
-            new SoundPlayer(sounds[sound]).PlaySync();
+            soundPlayers[fileName].PlaySync();
         }
 
         protected override List<AuthScopes> _scopes =>
@@ -67,12 +81,14 @@ namespace ChatPingsv2
             {
                 AuthScopes.Helix_Bits_Read,
                 AuthScopes.Helix_Channel_Read_Redemptions,
+                //AuthScopes.Helix_Moderator_Read_Followers, //<< this fucking shit doesnt work so no follow events for you
                 AuthScopes.Chat_Read
             };
 
         protected override Dictionary<string, int> topics =>
             new Dictionary<string, int>()
             {
+                //{ "channel.follow", 2 },
                 { "channel.channel_points_custom_reward_redemption.add", 1 }
             };
 
@@ -89,12 +105,20 @@ namespace ChatPingsv2
             public string? Secret { get; set; }
             public int MessageCd { get; set; } = 30;
             public int RedeemCd { get; set; } = 30;
+            public bool AutoConnect { get; set; } = false;
             public List<string> IgnoreList { get; set; }
 
             public Config()
             {
                 IgnoreList = new List<string>();
             }
+        }
+
+        public enum SoundFile
+        {
+            Message,
+            Redeem,
+            //Follow
         }
     }
 }

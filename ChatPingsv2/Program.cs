@@ -16,6 +16,8 @@ namespace ChatPingsv2
             _filePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), fileInfo.CompanyName, fileInfo.ProductName);
             await Login();
             Console.WriteLine("Bot ready.");
+            if (TwitchBot.Singleton.config.AutoConnect)
+                await TwitchBot.Singleton.Connect();
             while (true)
             {
                 Console.Write("> ");
@@ -27,14 +29,22 @@ namespace ChatPingsv2
                         break;
                     case "add":
                         if (x.Length < 1)
+                        {
+                            Console.WriteLine("Usage: add (username)");
                             break;
+                        }
                         TwitchBot.Singleton.config.IgnoreList.Add(x[1]);
+                        Console.WriteLine($"Adding {x[1]} to ignore list");
                         SaveConfig();
                         break;
                     case "remove":
                         if (x.Length < 1)
+                        {
+                            Console.WriteLine("Usage: remove (username)");
                             break;
+                        }
                         TwitchBot.Singleton.config.IgnoreList.Remove(x[1]);
+                        Console.WriteLine($"Removing {x[1]} from ignore list");
                         SaveConfig();
                         break;
                     case "list":
@@ -53,21 +63,38 @@ namespace ChatPingsv2
                         break;
                     case "message":
                         if (x.Length < 1)
+                        {
+                            Console.WriteLine("Usage: message (cooldown in seconds)");
                             break;
+                        }
                         if (int.TryParse(x[1], out int messageCd))
                         {
                             TwitchBot.Singleton.config.MessageCd = messageCd;
+                            Console.WriteLine($"Setting message cooldown to {x[1]} seconds");
                             SaveConfig();
                         }
                         break;
                     case "redeem":
-                        if (x.Length < 1)
+                        if (x.Length < 1) 
+                        {
+                            Console.WriteLine("Usage: redeem (cooldown in seconds)");
                             break;
+                        }
                         if (int.TryParse(x[1], out int redeemCd))
                         {
                             TwitchBot.Singleton.config.RedeemCd = redeemCd;
+                            Console.WriteLine($"Setting redeem cooldown to {x[1]} seconds");
                             SaveConfig();
                         }
+                        break;
+                    case "auto":
+                        TwitchBot.Singleton.config.AutoConnect = !TwitchBot.Singleton.config.AutoConnect;
+                        Console.WriteLine($"Setting auto connect to {(TwitchBot.Singleton.config.AutoConnect ? "ENABLED" : "DISABLED")}");
+                        SaveConfig();
+                        break;
+                    case "reload":
+                        TwitchBot.Singleton.InitSounds();
+                        Console.WriteLine("Reloaded sounds");
                         break;
                     case "cls":
                     case "clear":
@@ -83,6 +110,8 @@ namespace ChatPingsv2
                                         $"      list : Show ignore list\n" +
                                         $"   message : Set the cooldown of message pings\n" +
                                         $"    redeem : Set the cooldown of redeem pings\n" +
+                                        $"      auto : Toggle autoconnect on/off\n" +
+                                        $"    reload : Reload all sounds from disk\n" +
                                         $" cls/clear : Clear console\n" +
                                         $" -h/--help : Show this help text");
                         break;
