@@ -87,6 +87,10 @@ namespace ChatPingsv2
                             SaveConfig();
                         }
                         break;
+                    case "tts":
+                        TwitchBot.Singleton.TTS = !TwitchBot.Singleton.TTS;
+                        Console.WriteLine($"Setting TTS to {(TwitchBot.Singleton.TTS ? "ENABLED" : "DISABLED")}");
+                        break;
                     case "auto":
                         TwitchBot.Singleton.config.AutoConnect = !TwitchBot.Singleton.config.AutoConnect;
                         Console.WriteLine($"Setting auto connect to {(TwitchBot.Singleton.config.AutoConnect ? "ENABLED" : "DISABLED")}");
@@ -95,6 +99,12 @@ namespace ChatPingsv2
                     case "reload":
                         TwitchBot.Singleton.InitSounds();
                         Console.WriteLine("Reloaded sounds");
+                        break;
+                    case "settings":
+                        var conf = TwitchBot.Singleton.config;
+                        Console.WriteLine($"  ----- Settings -----\n" +
+                                        $"  Message : {conf.MessageCd}\n" +
+                                        $"   Redeem : {conf.RedeemCd}");
                         break;
                     case "cls":
                     case "clear":
@@ -110,6 +120,7 @@ namespace ChatPingsv2
                                         $"      list : Show ignore list\n" +
                                         $"   message : Set the cooldown of message pings\n" +
                                         $"    redeem : Set the cooldown of redeem pings\n" +
+                                        $"       tts : Toggle TTS on/off\n" +
                                         $"      auto : Toggle autoconnect on/off\n" +
                                         $"    reload : Reload all sounds from disk\n" +
                                         $" cls/clear : Clear console\n" +

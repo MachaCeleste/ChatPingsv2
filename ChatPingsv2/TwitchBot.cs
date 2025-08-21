@@ -1,6 +1,7 @@
 ﻿using System.Media;
 using TwitchBotFramework;
 using TwitchLib.Api.Core.Enums;
+using Windows.Media.SpeechSynthesis;
 
 namespace ChatPingsv2
 {
@@ -11,11 +12,17 @@ namespace ChatPingsv2
         public bool muteLogging;
         public DateTime? lastMessage;
         public DateTime? lastRedeem;
+        public bool TTS;
 
+        private bool glasses;
+        private SpeechSynthesizer synth;
+        private SoundPlayer synthPlayer;
         private Dictionary<SoundFile, SoundPlayer> soundPlayers;
 
         public TwitchBot(Token? token = null) : base(token)
         {
+            synth = new SpeechSynthesizer();
+            synth.Voice = SpeechSynthesizer.DefaultVoice;
             soundPlayers = new Dictionary<SoundFile, SoundPlayer>();
             this.InitSounds();
             TwitchBot.Singleton = this;
@@ -27,7 +34,8 @@ namespace ChatPingsv2
             {
                 Client.OnMessageReceived += Client_OnMessageReceived;
                 EventSub.ChannelPointsCustomRewardRedemptionAdd += EventSub_ChannelPointsCustomRewardRedemptionAdd;
-                //EventSub.ChannelFollow += EventSub_ChannelFollow;
+                EventSub.ChannelFollow += EventSub_ChannelFollow;
+                EventSub.ChannelAdBreakBegin += EventSub_ChannelAdBreakBegin;
                 await this.ConnectAsync();
             }
             catch (Exception ex)
@@ -45,14 +53,19 @@ namespace ChatPingsv2
             }
         }
 
-        //private async Task EventSub_ChannelFollow(object sender, TwitchLib.EventSub.Websockets.Core.EventArgs.Channel.ChannelFollowArgs args)
-        //{
-        //    PlaySound(SoundFile.Follow);// Does this need a cooldown?
-        //}
-
-        private async Task EventSub_ChannelPointsCustomRewardRedemptionAdd(object sender, TwitchLib.EventSub.Websockets.Core.EventArgs.Channel.ChannelPointsCustomRewardRedemptionArgs args)
+        private async Task EventSub_ChannelAdBreakBegin(object? sender, TwitchLib.EventSub.Core.EventArgs.Channel.ChannelAdBreakBeginArgs args)
         {
-            var _event = args.Notification.Payload.Event;
+            Client.SendMessage(Owner.Login, "Ads incoming!");
+        }
+
+        private async Task EventSub_ChannelFollow(object? sender, TwitchLib.EventSub.Core.EventArgs.Channel.ChannelFollowArgs args)
+        {
+            PlaySound(SoundFile.Follow);
+        }
+
+        private async Task EventSub_ChannelPointsCustomRewardRedemptionAdd(object? sender, TwitchLib.EventSub.Core.EventArgs.Channel.ChannelPointsCustomRewardRedemptionArgs args)
+        {
+            var _event = args.Payload.Event;
             string redeem = _event.Reward.Title;
             string username = _event.UserName;
             Console.WriteLine($"{DateTime.Now.ToString("hh:mm:ss")}: Redeem: {username}: {redeem}");
@@ -60,15 +73,47 @@ namespace ChatPingsv2
                 return;
             lastRedeem = DateTime.Now;
             PlaySound(SoundFile.Redeem);
+            if (redeem == "Lose the glasses")
+            {
+                GlassesTimer();
+            }
         }
 
-        private void Client_OnMessageReceived(object? sender, TwitchLib.Client.Events.OnMessageReceivedArgs e)
+        private void Client_OnMessageReceived(object? sender, TwitchLib.Client.Events.OnMessageReceivedArgs args)
         {
-            Console.WriteLine($"{DateTime.Now.ToString("hh:mm:ss")}: Message: {e.ChatMessage.Username}: {e.ChatMessage.Message}");
-            if ((lastMessage != null && (DateTime.Now - lastMessage) < TimeSpan.FromSeconds((double)config.MessageCd)) || config.IgnoreList.Contains(e.ChatMessage.Username))
+            MessageRecievedAsync(args);
+        }
+
+        private async Task MessageRecievedAsync(TwitchLib.Client.Events.OnMessageReceivedArgs args)
+        {
+            var user = args.ChatMessage.Username;
+            var message = args.ChatMessage.Message;
+            if (glasses || TTS)
+                SynthAddPlayer(user, message);
+            Console.WriteLine($"{DateTime.Now.ToString("hh:mm:ss")}: Message: {user}: {message}");
+            if ((lastMessage != null && (DateTime.Now - lastMessage) < TimeSpan.FromSeconds((double)config.MessageCd)) || config.IgnoreList.Contains(user))
                 return;
             lastMessage = DateTime.Now;
-            PlaySound(SoundFile.Message);
+            if (!glasses && !TTS)
+                PlaySound(SoundFile.Message);
+        }
+
+        private async Task GlassesTimer()
+        {
+            glasses = true;
+            await Task.Delay(900000);
+            PlaySound(SoundFile.Glasses);
+            glasses = false;
+        }
+
+        private async Task SynthAddPlayer(string user, string message)
+        {
+            using SpeechSynthesisStream synthStream = await synth.SynthesizeTextToStreamAsync($"{user} said {message}");
+            using var memoryStream = new MemoryStream();
+            await synthStream.AsStreamForRead().CopyToAsync(memoryStream);
+            memoryStream.Position = 0;
+            synthPlayer = new SoundPlayer(memoryStream);
+            synthPlayer.PlaySync();
         }
 
         private void PlaySound(SoundFile fileName)
@@ -79,17 +124,19 @@ namespace ChatPingsv2
         protected override List<AuthScopes> _scopes =>
             new List<AuthScopes>()
             {
-                AuthScopes.Helix_Bits_Read,
-                AuthScopes.Helix_Channel_Read_Redemptions,
-                //AuthScopes.Helix_Moderator_Read_Followers, //<< this fucking shit doesnt work so no follow events for you
+                //AuthScopes.Bits_Read,
+                AuthScopes.Channel_Read_Redemptions,
+                AuthScopes.Moderator_Read_Followers,
+                AuthScopes.Channel_Read_Ads,
                 AuthScopes.Chat_Read
             };
 
         protected override Dictionary<string, int> topics =>
             new Dictionary<string, int>()
             {
-                //{ "channel.follow", 2 },
-                { "channel.channel_points_custom_reward_redemption.add", 1 }
+                { "channel.channel_points_custom_reward_redemption.add", 1 },
+                { "channel.follow", 2 },
+                { "channel.ad_break.begin", 1 }
             };
 
         protected override async Task LoggingAsync(string msg)
@@ -116,9 +163,11 @@ namespace ChatPingsv2
 
         public enum SoundFile
         {
+            Notification,
             Message,
             Redeem,
-            //Follow
+            Follow,
+            Glasses
         }
     }
 }
