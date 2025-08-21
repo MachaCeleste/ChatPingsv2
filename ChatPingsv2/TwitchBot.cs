@@ -72,11 +72,12 @@ namespace ChatPingsv2
             if (lastRedeem != null && (DateTime.Now - lastRedeem) < TimeSpan.FromSeconds((double)config.RedeemCd))
                 return;
             lastRedeem = DateTime.Now;
-            PlaySound(SoundFile.Redeem);
             if (redeem == "Lose the glasses")
             {
                 GlassesTimer();
+                return;
             }
+            PlaySound(SoundFile.Redeem);
         }
 
         private void Client_OnMessageReceived(object? sender, TwitchLib.Client.Events.OnMessageReceivedArgs args)
@@ -88,7 +89,7 @@ namespace ChatPingsv2
         {
             var user = args.ChatMessage.Username;
             var message = args.ChatMessage.Message;
-            if (glasses || TTS)
+            if ((glasses || TTS) && !config.IgnoreList.Contains(user))
                 SynthAddPlayer(user, message);
             Console.WriteLine($"{DateTime.Now.ToString("hh:mm:ss")}: Message: {user}: {message}");
             if ((lastMessage != null && (DateTime.Now - lastMessage) < TimeSpan.FromSeconds((double)config.MessageCd)) || config.IgnoreList.Contains(user))
@@ -101,9 +102,10 @@ namespace ChatPingsv2
         private async Task GlassesTimer()
         {
             glasses = true;
+            //PlaySound(SoundFile.Glasses);
             await Task.Delay(900000);
-            PlaySound(SoundFile.Glasses);
             glasses = false;
+            //PlaySound(SoundFile.TimeUp);
         }
 
         private async Task SynthAddPlayer(string user, string message)
@@ -124,10 +126,10 @@ namespace ChatPingsv2
         protected override List<AuthScopes> _scopes =>
             new List<AuthScopes>()
             {
-                //AuthScopes.Bits_Read,
                 AuthScopes.Channel_Read_Redemptions,
                 AuthScopes.Moderator_Read_Followers,
                 AuthScopes.Channel_Read_Ads,
+                //AuthScopes.Bits_Read,
                 AuthScopes.Chat_Read
             };
 
@@ -136,7 +138,8 @@ namespace ChatPingsv2
             {
                 { "channel.channel_points_custom_reward_redemption.add", 1 },
                 { "channel.follow", 2 },
-                { "channel.ad_break.begin", 1 }
+                { "channel.ad_break.begin", 1 },
+                //{ "channel.cheer", 1 }
             };
 
         protected override async Task LoggingAsync(string msg)
@@ -164,6 +167,7 @@ namespace ChatPingsv2
         public enum SoundFile
         {
             Notification,
+            TimeUp,
             Message,
             Redeem,
             Follow,
