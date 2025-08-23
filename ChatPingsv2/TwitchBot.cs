@@ -13,6 +13,7 @@ namespace ChatPingsv2
         public DateTime? lastMessage;
         public DateTime? lastRedeem;
         public bool TTS;
+        public bool SayName;
 
         private bool glasses;
         private SpeechSynthesizer synth;
@@ -89,9 +90,9 @@ namespace ChatPingsv2
         {
             var user = args.ChatMessage.Username;
             var message = args.ChatMessage.Message;
+            Console.WriteLine($"{DateTime.Now.ToString("hh:mm:ss")}: Message: {user}: {message}");
             if ((glasses || TTS) && !config.IgnoreList.Contains(user))
                 SynthAddPlayer(user, message);
-            Console.WriteLine($"{DateTime.Now.ToString("hh:mm:ss")}: Message: {user}: {message}");
             if ((lastMessage != null && (DateTime.Now - lastMessage) < TimeSpan.FromSeconds((double)config.MessageCd)) || config.IgnoreList.Contains(user))
                 return;
             lastMessage = DateTime.Now;
@@ -110,7 +111,10 @@ namespace ChatPingsv2
 
         private async Task SynthAddPlayer(string user, string message)
         {
-            using SpeechSynthesisStream synthStream = await synth.SynthesizeTextToStreamAsync($"{user} said {message}");
+            string msg = $"{message}";
+            if (SayName)
+                msg = $"{user} said {msg}";
+            using SpeechSynthesisStream synthStream = await synth.SynthesizeTextToStreamAsync(msg);
             using var memoryStream = new MemoryStream();
             await synthStream.AsStreamForRead().CopyToAsync(memoryStream);
             memoryStream.Position = 0;

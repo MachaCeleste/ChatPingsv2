@@ -96,6 +96,10 @@ namespace ChatPingsv2
                         Console.WriteLine($"Setting auto connect to {(TwitchBot.Singleton.config.AutoConnect ? "ENABLED" : "DISABLED")}");
                         SaveConfig();
                         break;
+                    case "sayname":
+                        TwitchBot.Singleton.SayName = !TwitchBot.Singleton.SayName;
+                        Console.WriteLine($"Setting Say Name to {(TwitchBot.Singleton.SayName ? "ENABLED" : "DISABLED")}");
+                        break;
                     case "reload":
                         TwitchBot.Singleton.InitSounds();
                         Console.WriteLine("Reloaded sounds");
@@ -121,6 +125,7 @@ namespace ChatPingsv2
                                         $"   message : Set the cooldown of message pings\n" +
                                         $"    redeem : Set the cooldown of redeem pings\n" +
                                         $"       tts : Toggle TTS on/off\n" +
+                                        $"   sayname : Toggle saying name in TTS on/off\n" +
                                         $"      auto : Toggle autoconnect on/off\n" +
                                         $"    reload : Reload all sounds from disk\n" +
                                         $" cls/clear : Clear console\n" +
