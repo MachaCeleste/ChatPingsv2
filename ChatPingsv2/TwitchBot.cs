@@ -91,7 +91,9 @@ namespace ChatPingsv2
             {
                 case "Lose the glasses":
                     SynthAddPlayer($"{username} has redeemed Lose the glasses. Five minute timer started.");
+                    if (InCall) CallTCS.TrySetResult(Closer.Owner);
                     CallIn = false;
+                    SetRewardEnabled(AddedRewards["Call-In"].RewardId, false);
                     GlassesTimer();
                     break;
                 case "Call-In":
