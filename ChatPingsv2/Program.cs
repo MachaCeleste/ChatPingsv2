@@ -1,4 +1,4 @@
-﻿using FoxCrypto;
+using FoxCrypto;
 using Newtonsoft.Json;
 using System.Diagnostics;
 using System.Reflection;
@@ -10,8 +10,11 @@ namespace ChatPingsv2
     {
         private static string _filePath;
         private static string? _passkey;
+        private static readonly ManualResetEventSlim _exit = new ManualResetEventSlim();
         static async Task Main()
         {
+            AppDomain.CurrentDomain.ProcessExit += OnProcessExit;
+            Console.CancelKeyPress += OnCancelKeyPressed;
             FileVersionInfo fileInfo = FileVersionInfo.GetVersionInfo(Assembly.GetEntryAssembly().Location);
             _filePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), fileInfo.CompanyName, fileInfo.ProductName);
             await Login();
@@ -74,22 +77,24 @@ namespace ChatPingsv2
                             SaveConfig();
                         }
                         break;
-                    case "redeem":
-                        if (x.Length < 1) 
-                        {
-                            Console.WriteLine("Usage: redeem (cooldown in seconds)");
-                            break;
-                        }
-                        if (int.TryParse(x[1], out int redeemCd))
-                        {
-                            TwitchBot.Singleton.config.RedeemCd = redeemCd;
-                            Console.WriteLine($"Setting redeem cooldown to {x[1]} seconds");
-                            SaveConfig();
-                        }
-                        break;
                     case "tts":
                         TwitchBot.Singleton.TTS = !TwitchBot.Singleton.TTS;
+                        if (TwitchBot.Singleton.CallIn)
+                        {
+                            TwitchBot.Singleton.SetRewardEnabled(TwitchBot.Singleton.AddedRewards["Call-In"].RewardId, false);
+                            TwitchBot.Singleton.CallIn = false;
+                        }
                         Console.WriteLine($"Setting TTS to {(TwitchBot.Singleton.TTS ? "ENABLED" : "DISABLED")}");
+                        break;
+                    case "callin":
+                        TwitchBot.Singleton.CallIn = !TwitchBot.Singleton.CallIn;
+                        if (TwitchBot.Singleton.TTS) TwitchBot.Singleton.TTS = false;
+                        TwitchBot.Singleton.SetRewardEnabled(TwitchBot.Singleton.AddedRewards["Call-In"].RewardId, TwitchBot.Singleton.CallIn);
+                        Console.WriteLine($"Setting Call-In to {(TwitchBot.Singleton.CallIn ? "ENABLED" : "DISABLED")}");
+                        break;
+                    case "hangup":
+                        if (TwitchBot.Singleton.InCall)
+                            TwitchBot.Singleton.CallTCS.TrySetResult(TwitchBot.Closer.Owner);
                         break;
                     case "auto":
                         TwitchBot.Singleton.config.AutoConnect = !TwitchBot.Singleton.config.AutoConnect;
@@ -107,8 +112,7 @@ namespace ChatPingsv2
                     case "settings":
                         var conf = TwitchBot.Singleton.config;
                         Console.WriteLine($"  ----- Settings -----\n" +
-                                        $"  Message : {conf.MessageCd}\n" +
-                                        $"   Redeem : {conf.RedeemCd}");
+                                        $"  Message : {conf.MessageCd}");
                         break;
                     case "cls":
                     case "clear":
@@ -123,8 +127,9 @@ namespace ChatPingsv2
                                         $"    remove : Remove username from ignore list\n" +
                                         $"      list : Show ignore list\n" +
                                         $"   message : Set the cooldown of message pings\n" +
-                                        $"    redeem : Set the cooldown of redeem pings\n" +
                                         $"       tts : Toggle TTS on/off\n" +
+                                        $"    callin : Toggle Call-In on/off\n" +
+                                        $"    hangup : End current call\n" +
                                         $"   sayname : Toggle saying name in TTS on/off\n" +
                                         $"      auto : Toggle autoconnect on/off\n" +
                                         $"    reload : Reload all sounds from disk\n" +
@@ -285,6 +290,27 @@ namespace ChatPingsv2
             }
             Console.WriteLine();
             return password.ToString();
+        }
+
+        private static void OnProcessExit(object? sender, EventArgs e)
+        {
+            Task.Run(async () =>
+            {
+                await TwitchBot.Singleton.RemoveRewards();
+                _exit.Set();
+            });
+            _exit.Wait();
+        }
+
+        private static void OnCancelKeyPressed(object? sender, ConsoleCancelEventArgs e)
+        {
+            e.Cancel = true;
+
+            Task.Run(async () =>
+            {
+                await TwitchBot.Singleton.RemoveRewards();
+                Environment.Exit(0);
+            });
         }
     }
 }
