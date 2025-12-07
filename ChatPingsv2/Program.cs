@@ -86,6 +86,17 @@ namespace ChatPingsv2
                         }
                         Console.WriteLine($"Setting TTS to {(TwitchBot.Singleton.TTS ? "ENABLED" : "DISABLED")}");
                         break;
+                    case "stop":
+                        TwitchBot.Singleton.StopSynth();
+                        break;
+                    case "reroll":
+                        if (x.Length < 1)
+                        {
+                            Console.WriteLine("Usage: reroll (username)");
+                            break;
+                        }
+                        TwitchBot.Singleton.RerollUserVoice(x[1]);
+                        break;
                     case "callin":
                         TwitchBot.Singleton.CallIn = !TwitchBot.Singleton.CallIn;
                         if (TwitchBot.Singleton.TTS) TwitchBot.Singleton.TTS = false;
@@ -93,8 +104,8 @@ namespace ChatPingsv2
                         Console.WriteLine($"Setting Call-In to {(TwitchBot.Singleton.CallIn ? "ENABLED" : "DISABLED")}");
                         break;
                     case "hangup":
-                        if (TwitchBot.Singleton.InCall)
-                            TwitchBot.Singleton.CallTCS.TrySetResult(TwitchBot.Closer.Owner);
+                        if (TwitchBot.Singleton.IsInCall())
+                            TwitchBot.Singleton.UserHangup();
                         break;
                     case "auto":
                         TwitchBot.Singleton.config.AutoConnect = !TwitchBot.Singleton.config.AutoConnect;

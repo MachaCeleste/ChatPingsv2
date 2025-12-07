@@ -3,7 +3,7 @@ using TwitchBotFramework;
 using TwitchLib.Api.Core.Enums;
 using TwitchLib.Client.Events;
 using TwitchLib.EventSub.Core.SubscriptionTypes.Channel;
-using Windows.Media.SpeechSynthesis;
+using System.Speech.Synthesis;
 
 namespace ChatPingsv2
 {
@@ -12,33 +12,29 @@ namespace ChatPingsv2
         public static TwitchBot Singleton;
         public Config config;
         public bool muteLogging;
-        public DateTime? lastMessage;
         public bool TTS;
         public bool SayName;
         public bool CallIn;
-        public bool InCall;
         public Dictionary<string, Rewards> AddedRewards;
-        public TaskCompletionSource<Closer> CallTCS = new TaskCompletionSource<Closer>(TaskCreationOptions.RunContinuationsAsynchronously);
 
+        private bool InCall;
+        private DateTime? lastMessage;
+        private Dictionary<SoundFile, SoundPlayer> soundPlayers;
         private bool glasses;
         private string callInUsername;
+        private TaskCompletionSource<Closer> CallTCS = new TaskCompletionSource<Closer>(TaskCreationOptions.RunContinuationsAsynchronously);
+
         private SpeechSynthesizer synth;
+        private Dictionary<string, string> UserVoices;
         private SoundPlayer synthPlayer;
-        private Dictionary<SoundFile, SoundPlayer> soundPlayers;
 
         public TwitchBot(Token? token = null) : base(token)
         {
             synth = new SpeechSynthesizer();
-            synth.Voice = SpeechSynthesizer.DefaultVoice;
+            UserVoices = new Dictionary<string, string>();
             soundPlayers = new Dictionary<SoundFile, SoundPlayer>();
             this.InitSounds();
             TwitchBot.Singleton = this;
-        }
-
-        public enum Closer
-        {
-            Owner,
-            User
         }
 
         public async Task Connect()
@@ -68,6 +64,64 @@ namespace ChatPingsv2
             }
         }
 
+        public bool IsInCall()
+        {
+            return InCall;
+        }
+
+        public void StopSynth()
+        {
+            synthPlayer.Stop();
+        }
+
+        public void UserHangup()
+        {
+            CallTCS.TrySetResult(Closer.User);
+        }
+
+        public void RerollUserVoice(string username)
+        {
+            if (!UserVoices.ContainsKey(username.ToLower()))
+            {
+                Console.WriteLine("Error: Couldn't find user voice");
+                return;
+            }
+            UserVoices.Remove(username.ToLower());
+        }
+
+        public async Task SetRewardEnabled(string rewardId, bool state)
+        {
+            try
+            {
+                await Api.Helix.ChannelPoints.UpdateCustomRewardAsync(Owner.Id, rewardId, new TwitchLib.Api.Helix.Models.ChannelPoints.UpdateCustomReward.UpdateCustomRewardRequest()
+                {
+                    IsEnabled = state
+                });
+            }
+            catch (Exception ex)
+            {
+                LoggingAsync($"Error: {rewardId} -> {ex.ToString()}");
+            }
+        }
+
+        public async Task RemoveRewards()
+        {
+            if (AddedRewards == null) return;
+            LoggingAsync($"System: Removing rewards...");
+            foreach (var r in AddedRewards)
+            {
+                try
+                {
+                    if (r.Value.RedemtionIds.Any()) await UpdateRedeemAsync(r.Value.RewardId, r.Value.RedemtionIds, false);
+                    await Api.Helix.ChannelPoints.DeleteCustomRewardAsync(Owner.Id, r.Value.RewardId);
+                }
+                catch (Exception ex)
+                {
+                    LoggingAsync($"Error: {r} -> {ex.ToString()}");
+                }
+            }
+        }
+
         private async Task EventSub_ChannelAdBreakBegin(object? sender, TwitchLib.EventSub.Core.EventArgs.Channel.ChannelAdBreakBeginArgs args)
         {
             Client.SendMessage(Owner.Login, "Ads incoming!");
@@ -90,7 +144,8 @@ namespace ChatPingsv2
             switch (redeem)
             {
                 case "Lose the glasses":
-                    SynthAddPlayer($"{username} has redeemed Lose the glasses. Five minute timer started.");
+                    synth.SelectVoice(UserVoices[username.ToLower()]);
+                    SynthAddAudioPlayer($"{username} redeemed Lose the glasses. Five minute timer started.");
                     if (InCall) CallTCS.TrySetResult(Closer.Owner);
                     CallIn = false;
                     SetRewardEnabled(AddedRewards["Call-In"].RewardId, false);
@@ -128,38 +183,47 @@ namespace ChatPingsv2
                 UpdateRedeemAsync(rewardId, new List<string>() { redemtionId }, false);
         }
 
-        private void Client_OnJoinedChannel(object? sender, TwitchLib.Client.Events.OnJoinedChannelArgs e)
+        private void Client_OnJoinedChannel(object? sender, OnJoinedChannelArgs e)
         {
             if (AddedRewards != null) return;
             AddRewards();
         }
 
-        private void Client_OnMessageReceived(object? sender, TwitchLib.Client.Events.OnMessageReceivedArgs args)
+        private void Client_OnMessageReceived(object? sender, OnMessageReceivedArgs args)
         {
             MessageRecievedAsync(args);
         }
 
-        private async Task MessageRecievedAsync(TwitchLib.Client.Events.OnMessageReceivedArgs args)
+        private async Task MessageRecievedAsync(OnMessageReceivedArgs args)
         {
             var user = args.ChatMessage.Username;
+
+            if (!UserVoices.ContainsKey(user.ToLower()))
+            {
+                Random rng = new Random(Guid.NewGuid().GetHashCode());
+                var voices = synth.GetInstalledVoices();
+                UserVoices.Add(user.ToLower(), voices[rng.Next(voices.Count - 1)].VoiceInfo.Name);
+            }
+
             var message = args.ChatMessage.Message;
             if (message.StartsWith('!')) return;
             Console.WriteLine($"{DateTime.Now.ToString("hh:mm:ss")}: Message: {user}: {message}");
+            synth.SelectVoice(UserVoices[user.ToLower()]);
             if (!InCall && (glasses || TTS) && !config.IgnoreList.Contains(user))
             {
                 string msg = $"{message}";
                 if (SayName)
                     msg = $"{user} said {msg}";
-                SynthAddPlayer(msg);
+                SynthAddAudioPlayer(msg);
             }
             else if (InCall && user == callInUsername)
             {
-                SynthAddPlayer(message);
+                SynthAddAudioPlayer(message);
             }
             if ((lastMessage != null && (DateTime.Now - lastMessage) < TimeSpan.FromSeconds((double)config.MessageCd)) || config.IgnoreList.Contains(user))
                 return;
             lastMessage = DateTime.Now;
-            if (!glasses && !TTS && (InCall && user.ToLower() != callInUsername))
+            if ((!glasses && !TTS) || (InCall && user.ToLower() != callInUsername))
                 PlaySound(SoundFile.Message);
         }
 
@@ -181,22 +245,75 @@ namespace ChatPingsv2
             glasses = true;
             await Task.Delay(300000);
             glasses = false;
-            SynthAddPlayer($"Lose the glasses redeem has ended.");
-        }
-
-        private async Task SynthAddPlayer(string message)
-        {
-            using SpeechSynthesisStream synthStream = await synth.SynthesizeTextToStreamAsync(message);
-            using var memoryStream = new MemoryStream();
-            await synthStream.AsStreamForRead().CopyToAsync(memoryStream);
-            memoryStream.Position = 0;
-            synthPlayer = new SoundPlayer(memoryStream);
-            synthPlayer.PlaySync();
+            synth.SelectVoice(UserVoices.First().Value);
+            SynthAddAudioPlayer($"Lose the glasses redeem has ended.");
         }
 
         private void PlaySound(SoundFile fileName)
         {
             soundPlayers[fileName].PlaySync();
+        }
+
+        private void SynthAddAudioPlayer(string message)
+        {
+            MemoryStream ms = new MemoryStream();
+            synth.SetOutputToWaveStream(ms);
+            //synth.Speak(message); // decided to let the user raw-dog the SSML, what could possibly go wrong
+            var msg = @"<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='en-US'>
+                            <voice name='" + synth.Voice.Name + @"'>
+                                " + message + @"
+                            </voice>
+                        </speak>";
+            synth.SpeakSsml(msg);
+            ms.Position = 0;
+            synthPlayer = new SoundPlayer(ms);
+            synthPlayer.Play();
+        }
+
+        private async Task AddRewards()
+        {
+            AddedRewards = new Dictionary<string, Rewards>();
+            foreach (var r in RewardsList)
+            {
+                try
+                {
+                    var res = await Api.Helix.ChannelPoints.CreateCustomRewardsAsync(Owner.Id, new TwitchLib.Api.Helix.Models.ChannelPoints.CreateCustomReward.CreateCustomRewardsRequest()
+                    {
+                        Title = r.Name,
+                        Cost = r.Cost,
+                        IsUserInputRequired = r.Prompt == string.Empty ? false : true,
+                        Prompt = r.Prompt,
+                        GlobalCooldownSeconds = r.Cooldown,
+                        IsGlobalCooldownEnabled = r.Global,
+                        IsMaxPerStreamEnabled = r.MaxStream == 0 ? false : true,
+                        MaxPerStream = r.MaxStream,
+                        IsMaxPerUserPerStreamEnabled = r.MaxUser == 0 ? false : true,
+                        MaxPerUserPerStream = r.MaxUser,
+                        ShouldRedemptionsSkipRequestQueue = r.SkipQueue,
+                        IsEnabled = r.StartEnabled
+                    });
+                    AddedRewards[r.Name] = (new Rewards() { RewardId = res.Data[0].Id });
+                }
+                catch (Exception ex)
+                {
+                    LoggingAsync($"Error: {r.Name} -> {ex.ToString()}");
+                }
+            }
+        }
+
+        private async Task UpdateRedeemAsync(string rewardId, List<string> redeemIds, bool fulfill)
+        {
+            try
+            {
+                await Api.Helix.ChannelPoints.UpdateRedemptionStatusAsync(Owner.Id, rewardId, redeemIds, new TwitchLib.Api.Helix.Models.ChannelPoints.UpdateCustomRewardRedemptionStatus.UpdateCustomRewardRedemptionStatusRequest()
+                {
+                    Status = (fulfill ? CustomRewardRedemptionStatus.FULFILLED : CustomRewardRedemptionStatus.CANCELED)
+                });
+            }
+            catch (Exception ex)
+            {
+                LoggingAsync($"Error: {rewardId} {ex.ToString()}");
+            }
         }
 
         protected override List<AuthScopes> _scopes =>
@@ -236,25 +353,15 @@ namespace ChatPingsv2
 
             public Config()
             {
-                IgnoreList = new List<string>()
-                {
-                    "kofistreambot",
-                    "nightbot"
-                };
+                IgnoreList = new List<string>();
             }
         }
 
-        public enum SoundFile
+        public class SynthUser
         {
-            Notification,
-            TimeUp,
-            Message,
-            Redeem,
-            Follow,
-            Ringer,
-            Dialtone,
-            Pickup,
-            Hangup
+            public string Voice { get; set; }
+            public int Volume { get; set; }
+            public int Rate { get; set; }
         }
 
         public class Reward
@@ -270,96 +377,6 @@ namespace ChatPingsv2
             public bool StartEnabled { get; set; } = true;
         }
 
-        public static List<Reward> RewardsList = new List<Reward>()
-        {
-            new Reward{
-                Name = "Call-In",
-                Cost = 100,
-                Cooldown = 120,
-                SkipQueue = false,
-                StartEnabled = false
-            }
-        };
-
-        public async Task AddRewards()
-        {
-            AddedRewards = new Dictionary<string, Rewards>();
-            foreach (var r in RewardsList)
-            {
-                try
-                {
-                    var res = await Api.Helix.ChannelPoints.CreateCustomRewardsAsync(Owner.Id, new TwitchLib.Api.Helix.Models.ChannelPoints.CreateCustomReward.CreateCustomRewardsRequest()
-                    {
-                        Title = r.Name,
-                        Cost = r.Cost,
-                        IsUserInputRequired = r.Prompt == string.Empty ? false : true,
-                        Prompt = r.Prompt,
-                        GlobalCooldownSeconds = r.Cooldown,
-                        IsGlobalCooldownEnabled = r.Global,
-                        IsMaxPerStreamEnabled = r.MaxStream == 0 ? false : true,
-                        MaxPerStream = r.MaxStream,
-                        IsMaxPerUserPerStreamEnabled = r.MaxUser == 0 ? false : true,
-                        MaxPerUserPerStream = r.MaxUser,
-                        ShouldRedemptionsSkipRequestQueue = r.SkipQueue,
-                        IsEnabled = r.StartEnabled
-                    });
-                    AddedRewards[r.Name] = (new Rewards() { RewardId = res.Data[0].Id });
-                }
-                catch (Exception ex)
-                {
-                    LoggingAsync($"Error: {r.Name} -> {ex.ToString()}");
-                }
-            }
-        }
-
-        public async Task SetRewardEnabled(string rewardId, bool state)
-        {
-            try
-            {
-                await Api.Helix.ChannelPoints.UpdateCustomRewardAsync(Owner.Id, rewardId, new TwitchLib.Api.Helix.Models.ChannelPoints.UpdateCustomReward.UpdateCustomRewardRequest()
-                {
-                    IsEnabled = state
-                });
-            }
-            catch (Exception ex)
-            {
-                LoggingAsync($"Error: {rewardId} -> {ex.ToString()}");
-            }
-        }
-
-        private async Task UpdateRedeemAsync(string rewardId, List<string> redeemIds, bool fulfill)
-        {
-            try
-            {
-                await Api.Helix.ChannelPoints.UpdateRedemptionStatusAsync(Owner.Id, rewardId, redeemIds, new TwitchLib.Api.Helix.Models.ChannelPoints.UpdateCustomRewardRedemptionStatus.UpdateCustomRewardRedemptionStatusRequest()
-                {
-                    Status = (fulfill ? CustomRewardRedemptionStatus.FULFILLED : CustomRewardRedemptionStatus.CANCELED)
-                });
-            }
-            catch (Exception ex)
-            {
-                LoggingAsync($"Error: {rewardId} {ex.ToString()}");
-            }
-        }
-
-        public async Task RemoveRewards()
-        {
-            if (AddedRewards == null) return;
-            LoggingAsync($"System: Removing rewards...");
-            foreach (var r in AddedRewards)
-            {
-                try
-                {
-                    if (r.Value.RedemtionIds.Any()) await UpdateRedeemAsync(r.Value.RewardId, r.Value.RedemtionIds, false);
-                    await Api.Helix.ChannelPoints.DeleteCustomRewardAsync(Owner.Id, r.Value.RewardId);
-                }
-                catch (Exception ex)
-                {
-                    LoggingAsync($"Error: {r} -> {ex.ToString()}");
-                }
-            }
-        }
-
         public class Rewards
         {
             public string RewardId { get; set; }
@@ -370,5 +387,35 @@ namespace ChatPingsv2
                 RedemtionIds = new List<string>();
             }
         }
+
+        public enum Closer
+        {
+            Owner,
+            User
+        }
+
+        public enum SoundFile
+        {
+            Notification,
+            TimeUp,
+            Message,
+            Redeem,
+            Follow,
+            Ringer,
+            Dialtone,
+            Pickup,
+            Hangup
+        }
+
+        private static List<Reward> RewardsList = new List<Reward>()
+        {
+            new Reward{
+                Name = "Call-In",
+                Cost = 100,
+                Cooldown = 120,
+                SkipQueue = false,
+                StartEnabled = false
+            }
+        };
     }
 }
