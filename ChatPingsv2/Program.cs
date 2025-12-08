@@ -120,6 +120,25 @@ namespace ChatPingsv2
                         TwitchBot.Singleton.InitSounds();
                         Console.WriteLine("Reloaded sounds");
                         break;
+                    case "custom":
+                        // TODO add custom command here
+                        Console.WriteLine("Enter command name: ");
+                        string name = Console.ReadLine();
+                        if (string.IsNullOrWhiteSpace(name))
+                        {
+                            Console.WriteLine("Error: command name cannot be null or empty!");
+                            return;
+                        }
+                        Console.WriteLine("Enter command output: ");
+                        string output = Console.ReadLine();
+                        if (string.IsNullOrWhiteSpace(output))
+                        {
+                            Console.WriteLine("Error: command output cannot be null or empty!");
+                            return;
+                        }
+                        TwitchBot.Singleton.AddCustomCommand(name, output);
+                        Console.WriteLine("Command added!");
+                        break;
                     case "settings":
                         var conf = TwitchBot.Singleton.config;
                         Console.WriteLine($"  ----- Settings -----\n" +
@@ -139,11 +158,14 @@ namespace ChatPingsv2
                                         $"      list : Show ignore list\n" +
                                         $"   message : Set the cooldown of message pings\n" +
                                         $"       tts : Toggle TTS on/off\n" +
+                                        $"      stop : Stop the current TTS message\n" +
+                                        $"    reroll : Remove the users voice so it is rerolled\n" +
                                         $"    callin : Toggle Call-In on/off\n" +
                                         $"    hangup : End current call\n" +
                                         $"   sayname : Toggle saying name in TTS on/off\n" +
                                         $"      auto : Toggle autoconnect on/off\n" +
                                         $"    reload : Reload all sounds from disk\n" +
+                                        $"    custom : Start adding new custom command\n" +
                                         $" cls/clear : Clear console\n" +
                                         $" -h/--help : Show this help text");
                         break;
@@ -165,6 +187,7 @@ namespace ChatPingsv2
                 Console.WriteLine("Error while instantiating bot.");
                 Environment.Exit(0);
             }
+            TwitchBot.Singleton._filePath = _filePath;
             TwitchBot.Singleton.muteLogging = true;
             if (config == null || string.IsNullOrEmpty(config.ClientId) || string.IsNullOrEmpty(config.Secret))
             {

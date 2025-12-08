@@ -4,12 +4,14 @@ using TwitchLib.Api.Core.Enums;
 using TwitchLib.Client.Events;
 using TwitchLib.EventSub.Core.SubscriptionTypes.Channel;
 using System.Speech.Synthesis;
+using Newtonsoft.Json;
 
 namespace ChatPingsv2
 {
     public class TwitchBot : Framework
     {
         public static TwitchBot Singleton;
+        public string _filePath;
         public Config config;
         public bool muteLogging;
         public bool TTS;
@@ -27,6 +29,8 @@ namespace ChatPingsv2
         private SpeechSynthesizer synth;
         private Dictionary<string, string> UserVoices;
         private SoundPlayer synthPlayer;
+
+        private List<CustomCommand> customCommands;
 
         public TwitchBot(Token? token = null) : base(token)
         {
@@ -122,9 +126,17 @@ namespace ChatPingsv2
             }
         }
 
+        public void AddCustomCommand(string command, string output)
+        {
+            var cmd = new CustomCommand(command, output);
+            customCommands.Add(cmd);
+            var json = JsonConvert.SerializeObject(customCommands);
+            File.WriteAllText(Path.Combine(_filePath, "CustomCommands.json"), json);
+        }
+
         private async Task EventSub_ChannelAdBreakBegin(object? sender, TwitchLib.EventSub.Core.EventArgs.Channel.ChannelAdBreakBeginArgs args)
         {
-            Client.SendMessage(Owner.Login, "Ads incoming!");
+            SendMessage("System: Ads incoming!");
         }
 
         private async Task EventSub_ChannelFollow(object? sender, TwitchLib.EventSub.Core.EventArgs.Channel.ChannelFollowArgs args)
@@ -187,6 +199,7 @@ namespace ChatPingsv2
         {
             if (AddedRewards != null) return;
             AddRewards();
+            TryLoadCustomCommands();
         }
 
         private void Client_OnMessageReceived(object? sender, OnMessageReceivedArgs args)
@@ -237,7 +250,37 @@ namespace ChatPingsv2
                     if (cmd.ChatMessage.Username != callInUsername) return;
                     CallTCS.TrySetResult(Closer.User);
                     break;
+                case "8ball":
+                    SendMessage($"8Ball: {Magic8Ball.Ask(cmd.ArgumentsAsString)}");
+                    break;
+                default:
+                    var command = customCommands.FirstOrDefault(x => x.Command == cmd.CommandText);
+                    if (command == null)
+                    {
+                        Console.WriteLine($"Error: Command {cmd.CommandText} not found!");
+                        break;
+                    }
+                    var msg = command.Output;
+                    var streamer = Owner.Login;
+                    msg = msg.Replace("$(streamer)", streamer);
+
+                    var user = e.Command.ChatMessage.Username;
+                    msg = msg.Replace("$(user)", user);
+
+                    SendMessage(msg);
+                    break;
             }
+        }
+
+        private void TryLoadCustomCommands()
+        {
+            var path = Path.Combine(_filePath, "CustomCommands.json");
+            customCommands = new List<CustomCommand>();
+            if (!File.Exists(path)) return;
+            var json = File.ReadAllText(path);
+            if (json == null) return;
+            customCommands = JsonConvert.DeserializeObject<List<CustomCommand>>(json);
+            Console.WriteLine("System: Custom commands loaded!");
         }
 
         private async Task GlassesTimer()
@@ -247,6 +290,11 @@ namespace ChatPingsv2
             glasses = false;
             synth.SelectVoice(UserVoices.First().Value);
             SynthAddAudioPlayer($"Lose the glasses redeem has ended.");
+        }
+
+        private void SendMessage(string message)
+        {
+            Client.SendMessage(Owner.Login, message);
         }
 
         private void PlaySound(SoundFile fileName)
@@ -324,7 +372,8 @@ namespace ChatPingsv2
                 AuthScopes.Moderator_Read_Followers,
                 AuthScopes.Channel_Read_Ads,
                 //AuthScopes.Bits_Read,
-                AuthScopes.Chat_Read
+                AuthScopes.Chat_Read,
+                AuthScopes.Chat_Edit
             };
 
         protected override Dictionary<string, int> topics =>
@@ -385,6 +434,18 @@ namespace ChatPingsv2
             public Rewards()
             {
                 RedemtionIds = new List<string>();
+            }
+        }
+
+        public class CustomCommand
+        {
+            public string Command { get; set; }
+            public string Output { get; set; }
+
+            public CustomCommand(string command, string output)
+            {
+                Command = command;
+                Output = output;
             }
         }
 
