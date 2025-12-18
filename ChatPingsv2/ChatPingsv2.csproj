@@ -10,7 +10,7 @@
     <Title>Chat Pings</Title>
     <Authors>Macha Celeste</Authors>
     <Company>Celestial Corp</Company>
-    <Version>2.2.0</Version>
+    <Version>2.2.1</Version>
     <SupportedOSPlatformVersion>10.0.17763.0</SupportedOSPlatformVersion>
   </PropertyGroup>
 
@@ -37,6 +37,9 @@
   <ItemGroup>
     <Reference Include="FoxCrypto">
       <HintPath>..\..\FoxCrypto\FoxCrypto\bin\Release\net8.0\FoxCrypto.dll</HintPath>
+    </Reference>
+    <Reference Include="KoboldInterface">
+      <HintPath>..\..\KoboldInterface\KoboldInterface\bin\Release\net9.0\KoboldInterface.dll</HintPath>
     </Reference>
     <Reference Include="TwitchBotFramework">
       <HintPath>..\..\TwitchBotFramework\TwitchBotFramework\bin\Release\net8.0\TwitchBotFramework.dll</HintPath>

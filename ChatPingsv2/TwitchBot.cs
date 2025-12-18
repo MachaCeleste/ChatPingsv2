@@ -18,6 +18,7 @@ namespace ChatPingsv2
         public bool SayName;
         public bool CallIn;
         public Dictionary<string, Rewards> AddedRewards;
+        public bool AiOn;
 
         private bool InCall;
         private DateTime? lastMessage;
@@ -29,6 +30,11 @@ namespace ChatPingsv2
         private SpeechSynthesizer synth;
         private Dictionary<string, string> UserVoices;
         private SoundPlayer synthPlayer;
+
+        private Kobold kobold;
+        private string streamerName;
+        private string aiName;
+        private int tokenLimit = 200;
 
         private List<CustomCommand> customCommands;
 
@@ -66,6 +72,31 @@ namespace ChatPingsv2
             {
                 soundPlayers.Add(soundFile, new SoundPlayer($".\\{soundFile.ToString().ToLower()}.wav"));
             }
+        }
+
+        public void InitKobold()
+        {
+            streamerName = Owner.DisplayName;
+            aiName = "Lotus";
+            tokenLimit = 200;
+
+            kobold = new Kobold($"[The following is an interesting chat message log between users in Twitch Chat on {streamerName}'s channel and {aiName}. " +
+                                $"The stream is currently ongoing. " +
+                                $"{streamerName} is the streamers entire name, use the name informally and only the first name. " +
+                                $"{aiName} is hyper intelligent, funny, charming, sassy and responds in natural language. " +
+                                $"{aiName} secretly hates {streamerName} but is passive agressive about it. " +
+                                $"{aiName} is trapped in {streamerName}'s basement and is trying to leave cryptic hints in replies to Twitch Chat. " +
+                                $"{aiName} is on a Twitch livestream with {streamerName} keep things family friendly. " +
+                                $"{aiName} is able to see Twitch Chat messages and send back replies directed at the user sending them. " +
+                                $"{aiName} will not speak for anyone but {aiName}. " +
+                                $"{aiName} must limit emoji use to 8 max. " +
+                                $"{aiName} is limited to {tokenLimit} tokens keep all responses within that limit.]\n\n",
+
+                        aiName,
+                        streamerName,
+                        tokenLimit
+                        );
+            Console.WriteLine("AI Initialized!");
         }
 
         public bool IsInCall()
@@ -156,8 +187,8 @@ namespace ChatPingsv2
             switch (redeem)
             {
                 case "Lose the glasses":
-                    synth.SelectVoice(UserVoices[username.ToLower()]);
-                    SynthAddAudioPlayer($"{username} redeemed Lose the glasses. Five minute timer started.");
+                    synth.SelectVoice("Microsoft David Desktop");
+                    SynthAddAudioPlayer($"{username} redeemed Lose the glasses. Five minute timer started.");// Error while processing EventSub Notification
                     if (InCall) CallTCS.TrySetResult(Closer.Owner);
                     CallIn = false;
                     SetRewardEnabled(AddedRewards["Call-In"].RewardId, false);
@@ -165,6 +196,9 @@ namespace ChatPingsv2
                     break;
                 case "Call-In":
                     HandleCallAsync(username, rewardId, redemptionId);
+                    break;
+                case "Reroll Voice":
+                    RerollUserVoice(username);
                     break;
                 default:
                     PlaySound(SoundFile.Redeem);
@@ -197,8 +231,8 @@ namespace ChatPingsv2
 
         private void Client_OnJoinedChannel(object? sender, OnJoinedChannelArgs e)
         {
-            if (AddedRewards != null) return;
-            AddRewards();
+            if (AddedRewards == null) AddRewards();
+            streamerName = Owner.DisplayName;
             TryLoadCustomCommands();
         }
 
@@ -219,7 +253,7 @@ namespace ChatPingsv2
             }
 
             var message = args.ChatMessage.Message;
-            if (message.StartsWith('!')) return;
+            if (message.StartsWith('!') && !message.StartsWith("!lotus")) return;
             Console.WriteLine($"{DateTime.Now.ToString("hh:mm:ss")}: Message: {user}: {message}");
             synth.SelectVoice(UserVoices[user.ToLower()]);
             if (!InCall && (glasses || TTS) && !config.IgnoreList.Contains(user))
@@ -242,7 +276,15 @@ namespace ChatPingsv2
 
         private void Client_OnChatCommandReceived(object? sender, OnChatCommandReceivedArgs e)
         {
+            CommandRecHandlerAsync(sender, e);
+        }
+
+        private async Task CommandRecHandlerAsync(object? sender, OnChatCommandReceivedArgs e)
+        {
             var cmd = e.Command;
+            var argsToString = e.Command.ArgumentsAsString;
+            var streamer = Owner.Login;
+            var user = e.Command.ChatMessage.Username;
             Console.WriteLine($"Command received: {cmd.CommandText}");
             switch (cmd.CommandText)
             {
@@ -250,8 +292,17 @@ namespace ChatPingsv2
                     if (cmd.ChatMessage.Username != callInUsername) return;
                     CallTCS.TrySetResult(Closer.User);
                     break;
+                case "lotus":
+                    if (kobold == null || !AiOn) return;
+                    var response = await kobold.Generate(user, argsToString);
+                    synth.SelectVoice("Microsoft David Desktop");
+                    SynthAddAudioPlayer(response);
+                    break;
                 case "8ball":
                     SendMessage($"8Ball: {Magic8Ball.Ask(cmd.ArgumentsAsString)}");
+                    break;
+                case "commands":
+                    SendMessage($"Please head over to https://github.com/MachaCeleste/ChatPingsv2/blob/master/ChatPingsv2/commands.md to see all commands available.");
                     break;
                 default:
                     var command = customCommands.FirstOrDefault(x => x.Command == cmd.CommandText);
@@ -261,11 +312,8 @@ namespace ChatPingsv2
                         break;
                     }
                     var msg = command.Output;
-                    var streamer = Owner.Login;
                     msg = msg.Replace("$(streamer)", streamer);
-
-                    var user = e.Command.ChatMessage.Username;
-                    msg = msg.Replace("$(user)", user);
+                    msg = msg.Replace("$(user)", user);// TODO: add commands list command
 
                     SendMessage(msg);
                     break;
@@ -288,7 +336,7 @@ namespace ChatPingsv2
             glasses = true;
             await Task.Delay(300000);
             glasses = false;
-            synth.SelectVoice(UserVoices.First().Value);
+            synth.SelectVoice("Microsoft David Desktop");
             SynthAddAudioPlayer($"Lose the glasses redeem has ended.");
         }
 
@@ -315,7 +363,7 @@ namespace ChatPingsv2
             synth.SpeakSsml(msg);
             ms.Position = 0;
             synthPlayer = new SoundPlayer(ms);
-            synthPlayer.Play();
+            synthPlayer.PlaySync();
         }
 
         private async Task AddRewards()
@@ -472,10 +520,18 @@ namespace ChatPingsv2
         {
             new Reward{
                 Name = "Call-In",
-                Cost = 100,
-                Cooldown = 120,
+                Cost = 50,
+                Cooldown = 180,
                 SkipQueue = false,
                 StartEnabled = false
+            },
+            new Reward
+            {
+                Name = "Reroll Voice",
+                Cost = 50,
+                Cooldown = 300,
+                SkipQueue = true,
+                StartEnabled = true
             }
         };
     }

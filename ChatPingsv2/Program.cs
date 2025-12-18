@@ -77,6 +77,16 @@ namespace ChatPingsv2
                             SaveConfig();
                         }
                         break;
+                    case "ai":
+                        if (!TwitchBot.Singleton.AiOn) Console.WriteLine("Ensure your AI is running!");
+                        TwitchBot.Singleton.AiOn = !TwitchBot.Singleton.AiOn;
+                        Console.WriteLine($"Setting AI-On to {(TwitchBot.Singleton.AiOn ? "ENABLED" : "DISABLED")}");
+                        TwitchBot.Singleton.InitKobold();
+                        break;
+                    case "aireset":
+                        TwitchBot.Singleton.InitKobold();
+                        Console.WriteLine("Re-Initializing AI...");
+                        break;
                     case "tts":
                         TwitchBot.Singleton.TTS = !TwitchBot.Singleton.TTS;
                         if (TwitchBot.Singleton.CallIn)
@@ -87,7 +97,7 @@ namespace ChatPingsv2
                         Console.WriteLine($"Setting TTS to {(TwitchBot.Singleton.TTS ? "ENABLED" : "DISABLED")}");
                         break;
                     case "stop":
-                        TwitchBot.Singleton.StopSynth();
+                        TwitchBot.Singleton.StopSynth();// May be broken
                         break;
                     case "reroll":
                         if (x.Length < 1)
@@ -96,6 +106,7 @@ namespace ChatPingsv2
                             break;
                         }
                         TwitchBot.Singleton.RerollUserVoice(x[1]);
+                        Console.WriteLine($"Rerolled user voice for {x[1]}!");
                         break;
                     case "callin":
                         TwitchBot.Singleton.CallIn = !TwitchBot.Singleton.CallIn;
@@ -157,6 +168,8 @@ namespace ChatPingsv2
                                         $"    remove : Remove username from ignore list\n" +
                                         $"      list : Show ignore list\n" +
                                         $"   message : Set the cooldown of message pings\n" +
+                                        $"        ai : Toggles AI use on/off\n" +
+                                        $"   aireset : Re-Initialize the ai to a clean state\n" +
                                         $"       tts : Toggle TTS on/off\n" +
                                         $"      stop : Stop the current TTS message\n" +
                                         $"    reroll : Remove the users voice so it is rerolled\n" +

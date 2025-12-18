@@ -18,7 +18,9 @@ public static class Magic8Ball
         "Don't count on it",
         "My reply is no",
         "Outlook not so good",
-        "Very doubtful"
+        "Very doubtful",
+        "Stop shaking me so hard",
+        "Sprite.?"
     };
 
     static readonly Random rng = new Random();
