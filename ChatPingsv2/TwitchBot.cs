@@ -258,11 +258,16 @@ namespace ChatPingsv2
                 SynthAddAudioPlayer(message);
             }
 
-            string content = args.ChatMessage.EmoteReplacedMessage.Replace("<", "&lt").Replace(">", "&rt");
-            string pattern = @"(https:\/\/static-cdn\.jtvnw\.net\/emoticons\/v\d/\S+/\d\.0)";
-            MatchCollection? matches = Regex.Matches(content, pattern);
-            foreach (Match match in matches) content = content.Replace(match.Groups[1].Value, $"<img src=\"{match.Groups[1].Value}\" class=\"emote\">");
-
+            string content = message.Replace("<", "&lt").Replace(">", "&rt");
+            string erm = args.ChatMessage.EmoteReplacedMessage;
+            if (erm != null)
+            {
+                content = erm;
+                string pattern = @"(https:\/\/static-cdn\.jtvnw\.net\/emoticons\/v\d/\S+/\d\.0)";
+                MatchCollection? matches = Regex.Matches(content, pattern);
+                if (matches.Count > 0)
+                    foreach (Match match in matches) content = content.Replace(match.Groups[1].Value, $"<img src=\"{match.Groups[1].Value}\" class=\"emote\">");
+            }
             if (!config.IgnoreList.Contains(user)) await OverlayServer.Singleton.SendMessage(user, content, args.ChatMessage.ColorHex ?? "#a970ff", MessageDuration);
 
             if ((lastMessage != null && (DateTime.Now - lastMessage) < TimeSpan.FromSeconds((double)config.MessageCd)) || config.IgnoreList.Contains(user))

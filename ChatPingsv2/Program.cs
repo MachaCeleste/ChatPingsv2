@@ -150,14 +150,6 @@ namespace ChatPingsv2
                         TwitchBot.Singleton.AddCustomCommand(name, output);
                         Console.WriteLine("Command added!");
                         break;
-                    case "duration":
-                        if (x.Length < 1 || !int.TryParse(x[0], out int duration))
-                        {
-                            Console.WriteLine("Usage: reroll (username)");
-                            break;
-                        }
-                        TwitchBot.Singleton.MessageDuration = duration;
-                        break;
                     case "settings":
                         var conf = TwitchBot.Singleton.config;
                         Console.WriteLine($"  ----- Settings -----\n" +
@@ -187,7 +179,6 @@ namespace ChatPingsv2
                                         $"      auto : Toggle autoconnect on/off\n" +
                                         $"    reload : Reload all sounds from disk\n" +
                                         $"    custom : Start adding new custom command\n" +
-                                        $"  duration : Set timeout for messages on overlay\n" +
                                         $"  settings : Display all settings\n" +
                                         $" cls/clear : Clear console\n" +
                                         $" -h/--help : Show this help text");
