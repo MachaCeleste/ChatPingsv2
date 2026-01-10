@@ -258,7 +258,7 @@ namespace ChatPingsv2
                 SynthAddAudioPlayer(message);
             }
 
-            string content = message.Replace("<", "&lt").Replace(">", "&rt");
+            string content = message.Replace("<", "&lt").Replace(">", "&gt");
             string erm = args.ChatMessage.EmoteReplacedMessage;
             if (erm != null)
             {
