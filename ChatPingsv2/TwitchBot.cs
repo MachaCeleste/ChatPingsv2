@@ -262,7 +262,7 @@ namespace ChatPingsv2
             string erm = args.ChatMessage.EmoteReplacedMessage;
             if (erm != null)
             {
-                content = erm;
+                content = erm.Replace("<", "&lt").Replace(">", "&gt");
                 string pattern = @"(https:\/\/static-cdn\.jtvnw\.net\/emoticons\/v\d/\S+/\d\.0)";
                 MatchCollection? matches = Regex.Matches(content, pattern);
                 if (matches.Count > 0)
