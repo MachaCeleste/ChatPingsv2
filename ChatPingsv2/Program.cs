@@ -81,7 +81,7 @@ namespace ChatPingsv2
                         if (!TwitchBot.Singleton.AiOn) Console.WriteLine("Ensure your AI is running!");
                         TwitchBot.Singleton.AiOn = !TwitchBot.Singleton.AiOn;
                         Console.WriteLine($"Setting AI-On to {(TwitchBot.Singleton.AiOn ? "ENABLED" : "DISABLED")}");
-                        TwitchBot.Singleton.InitKobold();
+                        if (TwitchBot.Singleton.AiOn) TwitchBot.Singleton.InitKobold();
                         break;
                     case "aireset":
                         TwitchBot.Singleton.InitKobold();
@@ -97,7 +97,7 @@ namespace ChatPingsv2
                         Console.WriteLine($"Setting TTS to {(TwitchBot.Singleton.TTS ? "ENABLED" : "DISABLED")}");
                         break;
                     case "stop":
-                        TwitchBot.Singleton.StopSynth();// May be broken
+                        TwitchBot.Singleton.StopSynth();
                         break;
                     case "reroll":
                         if (x.Length < 1)
@@ -150,6 +150,14 @@ namespace ChatPingsv2
                         TwitchBot.Singleton.AddCustomCommand(name, output);
                         Console.WriteLine("Command added!");
                         break;
+                    case "duration":
+                        if (x.Length < 1 || !int.TryParse(x[0], out int duration))
+                        {
+                            Console.WriteLine("Usage: reroll (username)");
+                            break;
+                        }
+                        TwitchBot.Singleton.MessageDuration = duration;
+                        break;
                     case "settings":
                         var conf = TwitchBot.Singleton.config;
                         Console.WriteLine($"  ----- Settings -----\n" +
@@ -179,6 +187,8 @@ namespace ChatPingsv2
                                         $"      auto : Toggle autoconnect on/off\n" +
                                         $"    reload : Reload all sounds from disk\n" +
                                         $"    custom : Start adding new custom command\n" +
+                                        $"  duration : Set timeout for messages on overlay\n" +
+                                        $"  settings : Display all settings\n" +
                                         $" cls/clear : Clear console\n" +
                                         $" -h/--help : Show this help text");
                         break;

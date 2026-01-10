@@ -41,6 +41,9 @@
     <Reference Include="KoboldInterface">
       <HintPath>..\..\KoboldInterface\KoboldInterface\bin\Release\net9.0\KoboldInterface.dll</HintPath>
     </Reference>
+    <Reference Include="OverlayFramework">
+      <HintPath>..\..\OverlayFramework\OverlayFramework\bin\Release\net9.0\OverlayFramework.dll</HintPath>
+    </Reference>
     <Reference Include="TwitchBotFramework">
       <HintPath>..\..\TwitchBotFramework\TwitchBotFramework\bin\Release\net8.0\TwitchBotFramework.dll</HintPath>
     </Reference>
@@ -57,6 +60,9 @@
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
     <None Update="message.wav">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Update="overlay.html">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
     <None Update="pickup.wav">

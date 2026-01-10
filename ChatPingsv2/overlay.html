@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <style>
+        body {
+            margin: 0;
+            background: transparent;
+            overflow: hidden;
+            font-family: sans-serif;
+        }
+
+        #stack {
+            position: absolute;
+            bottom: 40px;
+            left: 40px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .user {
+            font-weight: bold;
+            margin-right: 4px;
+            text-shadow: 1px 1px 1px rgba(0, 0, 0, 0.5);
+            white-space: nowrap;
+        }
+
+        .message {
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 14px 22px;
+            border-radius: 8px;
+            font-size: 32px;
+            transform: translateY(40px);
+            opacity: 0;
+            transition: transform 0.4s ease, opacity 0.4s ease, margin 0.4s ease;
+        }
+
+            .message.show {
+                transform: translateY(0);
+                opacity: 1;
+            }
+
+            .message.hide {
+                opacity: 0;
+                margin-top: -80px;
+            }
+
+        .emote {
+            height: 1.2em;
+            width: auto;
+            vertical-align: middle;
+            margin: 0 0.15em;
+        }
+
+        #notification-container {
+            position: absolute;
+            top: 40px;
+            left: 50%;
+            transform: translateX(-50%);
+            pointer-events: none;
+        }
+
+        .notification {
+            min-width: 200px;
+            max-width: 600px;
+            background: rgba(0, 0, 0, 0.7);
+            border-radius: 10px;
+            padding: 16px 20px;
+            opacity: 0;
+            transform: translateY(-20px);
+            transition: opacity 0.4s ease, transform 0.4s ease;
+        }
+
+            .notification.show {
+                opacity: 1;
+                transform: translateY(0);
+            }
+
+            .notification.hide {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+
+        .notification-title {
+            display: block;
+            font-size: 25px;
+            font-weight: bold;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+
+        .notification-body {
+            font-size: 16px;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+
+        .notification-footer {
+            font-size: 12px;
+            text-align: right;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="notification-container"></div>
+
+    <div id="stack"></div>
+
+    <script>
+        const ws = new WebSocket("ws://localhost:23399/ws");
+        const notificationContainer = document.getElementById("notification-container");
+        const notificationQueue = [];
+        let notificationActive = false;
+        const stack = document.getElementById("stack");
+
+        const MessageType = {
+            Message: 0,
+            Notification: 1
+        };
+
+        ws.onmessage = e => {
+            const msg = JSON.parse(e.data);
+            switch (msg.Type) {
+                case MessageType.Message:
+                    postMessage(msg);
+                    break;
+                case MessageType.Notification:
+                    queueNotification(msg);
+                    break;
+            }
+        };
+
+        function postMessage(msg) {
+            const user = getString(msg) ?? "Unknown";
+            const message = getString(msg) ?? "";
+            const userColor = getString(msg) ?? "#000000";
+            const duration = getInt(msg) ?? 3000;
+
+            const el = document.createElement("div");
+            el.className = "message";
+            el.innerHTML = `<span class="user" style="color: ${userColor}">${user}:</span> ${message}`;
+            stack.appendChild(el);
+            requestAnimationFrame(() => el.classList.add("show"));
+            setTimeout(() => {
+                el.classList.remove("show");
+                el.classList.add("hide");
+                setTimeout(() => el.remove(), 400);
+            }, duration);
+        }
+
+        function queueNotification(msg) {
+            notificationQueue.push(msg);
+            processNotificationQueue();
+        }
+
+        function processNotificationQueue() {
+            if (notificationActive) return;
+            if (notificationQueue.length === 0) return;
+
+            notificationActive = true;
+            const msg = notificationQueue.shift();
+            showNotification(msg);
+        }
+
+        function showNotification(msg) {
+            const user = getString(msg) ?? "Unknown";
+            const title = getString(msg) ?? "";
+            const body = getString(msg) ?? "";
+            const duration = getInt(msg) ?? 3000;
+
+            const el = document.createElement("div");
+            el.className = "notification";
+
+            const titleEl = document.createElement("div");
+            titleEl.className = "notification-title";
+            titleEl.textContent = title;
+
+            const bodyEl = document.createElement("div");
+            bodyEl.className = "notification-body";
+            bodyEl.textContent = body;
+
+            const footerEl = document.createElement("div");
+            footerEl.className = "notification-footer";
+            footerEl.textContent = `- ${user}`;
+
+            el.appendChild(titleEl);
+            el.appendChild(bodyEl);
+            el.appendChild(footerEl);
+
+            notificationContainer.appendChild(el);
+
+            requestAnimationFrame(() => el.classList.add("show"));
+
+            setTimeout(() => {
+                el.classList.remove("show");
+                el.classList.add("hide");
+
+                setTimeout(() => {
+                    el.remove();
+                    notificationActive = false;
+                    processNotificationQueue();
+                }, 400);
+            }, duration);
+        }
+
+        function getString(msg) {
+            return msg.stringValues?.shift();
+        }
+        function getInt(msg) {
+            return msg.intValues?.shift();
+        }
+        function getBool(msg) {
+            return msg.boolValues?.shift();
+        }
+    </script>
+
+</body>
+</html>

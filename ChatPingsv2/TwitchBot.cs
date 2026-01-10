@@ -1,10 +1,12 @@
 using System.Media;
 using TwitchBotFramework;
+using OverlayFramework;
 using TwitchLib.Api.Core.Enums;
 using TwitchLib.Client.Events;
 using TwitchLib.EventSub.Core.SubscriptionTypes.Channel;
 using System.Speech.Synthesis;
 using Newtonsoft.Json;
+using System.Text.RegularExpressions;
 
 namespace ChatPingsv2
 {
@@ -19,6 +21,7 @@ namespace ChatPingsv2
         public bool CallIn;
         public Dictionary<string, Rewards> AddedRewards;
         public bool AiOn;
+        public int MessageDuration = 3000;
 
         private bool InCall;
         private DateTime? lastMessage;
@@ -33,8 +36,6 @@ namespace ChatPingsv2
 
         private Kobold kobold;
         private string streamerName;
-        private string aiName;
-        private int tokenLimit = 200;
 
         private List<CustomCommand> customCommands;
 
@@ -44,6 +45,8 @@ namespace ChatPingsv2
             UserVoices = new Dictionary<string, string>();
             soundPlayers = new Dictionary<SoundFile, SoundPlayer>();
             this.InitSounds();
+            new OverlayServer();
+            OverlayServer.Singleton.Start();
             TwitchBot.Singleton = this;
         }
 
@@ -51,6 +54,7 @@ namespace ChatPingsv2
         {
             try
             {
+                Client.WillReplaceEmotes = true;
                 Client.OnJoinedChannel += Client_OnJoinedChannel;
                 Client.OnMessageReceived += Client_OnMessageReceived;
                 Client.OnChatCommandReceived += Client_OnChatCommandReceived;
@@ -77,25 +81,7 @@ namespace ChatPingsv2
         public void InitKobold()
         {
             streamerName = Owner.DisplayName;
-            aiName = "Lotus";
-            tokenLimit = 200;
-
-            kobold = new Kobold($"[The following is an interesting chat message log between users in Twitch Chat on {streamerName}'s channel and {aiName}. " +
-                                $"The stream is currently ongoing. " +
-                                $"{streamerName} is the streamers entire name, use the name informally and only the first name. " +
-                                $"{aiName} is hyper intelligent, funny, charming, sassy and responds in natural language. " +
-                                $"{aiName} secretly hates {streamerName} but is passive agressive about it. " +
-                                $"{aiName} is trapped in {streamerName}'s basement and is trying to leave cryptic hints in replies to Twitch Chat. " +
-                                $"{aiName} is on a Twitch livestream with {streamerName} keep things family friendly. " +
-                                $"{aiName} is able to see Twitch Chat messages and send back replies directed at the user sending them. " +
-                                $"{aiName} will not speak for anyone but {aiName}. " +
-                                $"{aiName} must limit emoji use to 8 max. " +
-                                $"{aiName} is limited to {tokenLimit} tokens keep all responses within that limit.]\n\n",
-
-                        aiName,
-                        streamerName,
-                        tokenLimit
-                        );
+            kobold = new Kobold(streamerName);
             Console.WriteLine("AI Initialized!");
         }
 
@@ -200,6 +186,10 @@ namespace ChatPingsv2
                 case "Reroll Voice":
                     RerollUserVoice(username);
                     break;
+                case "Send TTS":
+                    synth.SelectVoice(UserVoices[username.ToLower()]);
+                    SynthAddAudioPlayer($"{_event.UserInput}");
+                    break;
                 default:
                     PlaySound(SoundFile.Redeem);
                     break;
@@ -267,6 +257,14 @@ namespace ChatPingsv2
             {
                 SynthAddAudioPlayer(message);
             }
+
+            string content = args.ChatMessage.EmoteReplacedMessage.Replace("<", "&lt").Replace(">", "&rt");
+            string pattern = @"(https:\/\/static-cdn\.jtvnw\.net\/emoticons\/v\d/\S+/\d\.0)";
+            MatchCollection? matches = Regex.Matches(content, pattern);
+            foreach (Match match in matches) content = content.Replace(match.Groups[1].Value, $"<img src=\"{match.Groups[1].Value}\" class=\"emote\">");
+
+            if (!config.IgnoreList.Contains(user)) await OverlayServer.Singleton.SendMessage(user, content, args.ChatMessage.ColorHex ?? "#a970ff", MessageDuration);
+
             if ((lastMessage != null && (DateTime.Now - lastMessage) < TimeSpan.FromSeconds((double)config.MessageCd)) || config.IgnoreList.Contains(user))
                 return;
             lastMessage = DateTime.Now;
@@ -294,8 +292,8 @@ namespace ChatPingsv2
                     break;
                 case "lotus":
                     if (kobold == null || !AiOn) return;
-                    var response = await kobold.Generate(user, argsToString);
-                    synth.SelectVoice("Microsoft David Desktop");
+                    var response = await kobold.Chat(user, argsToString);
+                    synth.SelectVoice("Microsoft Zira Desktop");
                     SynthAddAudioPlayer(response);
                     break;
                 case "8ball":
@@ -313,8 +311,7 @@ namespace ChatPingsv2
                     }
                     var msg = command.Output;
                     msg = msg.Replace("$(streamer)", streamer);
-                    msg = msg.Replace("$(user)", user);// TODO: add commands list command
-
+                    msg = msg.Replace("$(user)", user);
                     SendMessage(msg);
                     break;
             }
@@ -532,6 +529,15 @@ namespace ChatPingsv2
                 Cooldown = 300,
                 SkipQueue = true,
                 StartEnabled = true
+            },
+            new Reward
+            {
+                Name = "Send TTS",
+                Cost = 150,
+                Cooldown = 120,
+                SkipQueue = true,
+                StartEnabled = true,
+                Prompt = "Message to send as TTS"
             }
         };
     }
