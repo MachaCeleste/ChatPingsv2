@@ -1,5 +1,6 @@
 using FoxCrypto;
 using Newtonsoft.Json;
+using OverlayFramework;
 using System.Diagnostics;
 using System.Reflection;
 using System.Text;
@@ -25,13 +26,13 @@ namespace ChatPingsv2
             {
                 Console.Write("> ");
                 string[] x = Console.ReadLine().Split(' ');
-                switch (x[0])
+                switch (x[0]) // TODO: Clean up this mess and functionalize every case to avoid variable name conflicts
                 {
                     case "connect":
                         await TwitchBot.Singleton.Connect();
                         break;
                     case "add":
-                        if (x.Length < 1)
+                        if (x.Length < 2)
                         {
                             Console.WriteLine("Usage: add (username)");
                             break;
@@ -41,7 +42,7 @@ namespace ChatPingsv2
                         SaveConfig();
                         break;
                     case "remove":
-                        if (x.Length < 1)
+                        if (x.Length < 2)
                         {
                             Console.WriteLine("Usage: remove (username)");
                             break;
@@ -64,16 +65,16 @@ namespace ChatPingsv2
                         }
                         Console.WriteLine(listOutput);
                         break;
-                    case "message":
-                        if (x.Length < 1)
+                    case "msgcd":
+                        if (x.Length < 2)
                         {
-                            Console.WriteLine("Usage: message (cooldown in seconds)");
+                            Console.WriteLine("Usage: msgcd (cooldown in seconds)");
                             break;
                         }
                         if (int.TryParse(x[1], out int messageCd))
                         {
                             TwitchBot.Singleton.config.MessageCd = messageCd;
-                            Console.WriteLine($"Setting message cooldown to {x[1]} seconds");
+                            Console.WriteLine($"Setting message sound cooldown to {x[1]} seconds");
                             SaveConfig();
                         }
                         break;
@@ -100,7 +101,7 @@ namespace ChatPingsv2
                         TwitchBot.Singleton.StopSynth();
                         break;
                     case "reroll":
-                        if (x.Length < 1)
+                        if (x.Length < 2)
                         {
                             Console.WriteLine("Usage: reroll (username)");
                             break;
@@ -131,8 +132,7 @@ namespace ChatPingsv2
                         TwitchBot.Singleton.InitSounds();
                         Console.WriteLine("Reloaded sounds");
                         break;
-                    case "custom":
-                        // TODO add custom command here
+                    case "custom": // TODO: Can be simplified...
                         Console.WriteLine("Enter command name: ");
                         string name = Console.ReadLine();
                         if (string.IsNullOrWhiteSpace(name))
@@ -147,13 +147,49 @@ namespace ChatPingsv2
                             Console.WriteLine("Error: command output cannot be null or empty!");
                             return;
                         }
-                        TwitchBot.Singleton.AddCustomCommand(name, output);
+                        Console.WriteLine("Enter command cooldown in seconds: ");
+                        if (!int.TryParse(Console.ReadLine(), out int cd) || cd < 3)
+                        {
+                            Console.WriteLine("Error: cooldown must be a number above 3!");
+                            return;
+                        }
+                        TwitchBot.Singleton.AddCustomCommand(name, output, cd);
                         Console.WriteLine("Command added!");
+                        break;
+                    case "delete":
+                        if (x.Length < 2)
+                        {
+                            Console.WriteLine("Usage: delete (command)");
+                            break;
+                        }
+                        TwitchBot.Singleton.DeleteCustomCommand(x[1]);
                         break;
                     case "settings":
                         var conf = TwitchBot.Singleton.config;
                         Console.WriteLine($"  ----- Settings -----\n" +
                                         $"  Message : {conf.MessageCd}");
+                        break;
+                    case "overlay":
+                        OverlayServer.Singleton.IsEnabled = !OverlayServer.Singleton.IsEnabled;
+                        Console.WriteLine($"Overlay {(OverlayServer.Singleton.IsEnabled ? "ENABLED" : "DISABLED")}");
+                        break;
+                    case "message":
+                        if (x.Length < 2 || int.TryParse(x[1], out int mduration) || mduration < 1)
+                        {
+                            Console.WriteLine("Usage: message (duration min:1)");
+                            break;
+                        }
+                        OverlayServer.Singleton.MessageDuration = mduration * 1000;
+                        Console.WriteLine($"Set message timeout duration to {mduration} seconds");
+                        break;
+                    case "notification":
+                        if (x.Length < 2 || int.TryParse(x[1], out int nduration) || nduration < 1)
+                        {
+                            Console.WriteLine("Usage: notification (duration min:1)");
+                            break;
+                        }
+                        OverlayServer.Singleton.NotificationDuration = nduration * 1000;
+                        Console.WriteLine($"Set notification timeout duration to {nduration} seconds");
                         break;
                     case "cls":
                     case "clear":
@@ -162,26 +198,36 @@ namespace ChatPingsv2
                     case "-h":
                     case "--help":
                     default:
-                        Console.WriteLine($"       ----- Commands -----\n" +
-                                        $"   connect : Connect to twitch.\n" +
-                                        $"       add : Add username to ignore list\n" +
-                                        $"    remove : Remove username from ignore list\n" +
-                                        $"      list : Show ignore list\n" +
-                                        $"   message : Set the cooldown of message pings\n" +
-                                        $"        ai : Toggles AI use on/off\n" +
-                                        $"   aireset : Re-Initialize the ai to a clean state\n" +
-                                        $"       tts : Toggle TTS on/off\n" +
-                                        $"      stop : Stop the current TTS message\n" +
-                                        $"    reroll : Remove the users voice so it is rerolled\n" +
-                                        $"    callin : Toggle Call-In on/off\n" +
-                                        $"    hangup : End current call\n" +
-                                        $"   sayname : Toggle saying name in TTS on/off\n" +
-                                        $"      auto : Toggle autoconnect on/off\n" +
-                                        $"    reload : Reload all sounds from disk\n" +
-                                        $"    custom : Start adding new custom command\n" +
-                                        $"  settings : Display all settings\n" +
-                                        $" cls/clear : Clear console\n" +
-                                        $" -h/--help : Show this help text");
+                        Console.WriteLine($"" +
+                                        $"       ----- Commands -----\n" +
+                                        $"    -h/--help : Show this help text\n" +
+                                        $"      connect : Connect to twitch\n" +
+                                        $"         auto : Toggle autoconnect on/off\n" +
+                                        $"       custom : Start adding new custom command\n" +
+                                        $"     settings : Display all settings\n" +
+                                        $"    cls/clear : Clear console\n" +
+                                        $"       ----- Overlay -----\n" +
+                                        $"      overlay : Toggle overlay on/off\n" +
+                                        $"      message : Set timeout in seconds of messages in the overlay\n" +
+                                        $" notification : Set timeout in seconds of notifications in the overlay\n" +
+                                        $"       ----- Ignore List -----\n" +
+                                        $"          add : Add username to ignore list\n" +
+                                        $"       remove : Remove username from ignore list\n" +
+                                        $"         list : Show ignore list\n" +
+                                        $"       ----- Sounds -----\n" +
+                                        $"        msgcd : Set the cooldown of message pings\n" +
+                                        $"       reload : Reload all sounds from disk\n" +
+                                        $"       ----- TTS -----\n" +
+                                        $"       callin : Toggle Call-In on/off\n" +
+                                        $"       hangup : End current call\n" +
+                                        $"          tts : Toggle TTS on/off\n" +
+                                        $"      sayname : Toggle saying name in TTS on/off\n" +
+                                        $"       reroll : Remove the users voice so it is rerolled\n" +
+                                        $"         stop : Stop the current TTS message\n" +
+                                        $"       ----- Kobold -----\n" +
+                                        $"           ai : Toggles AI use on/off\n" +
+                                        $"      aireset : Re-Initialize the ai to a clean state\n" +
+                                        $"");
                         break;
                 }
             }

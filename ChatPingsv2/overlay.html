@@ -110,7 +110,8 @@
     <div id="stack"></div>
 
     <script>
-        const ws = new WebSocket("ws://localhost:23399/ws");
+        let ws;
+        const socUrl = 'ws://localhost:23399/ws';
         const notificationContainer = document.getElementById("notification-container");
         const notificationQueue = [];
         let notificationActive = false;
@@ -121,17 +122,31 @@
             Notification: 1
         };
 
-        ws.onmessage = e => {
-            const msg = JSON.parse(e.data);
-            switch (msg.Type) {
-                case MessageType.Message:
-                    postMessage(msg);
-                    break;
-                case MessageType.Notification:
-                    queueNotification(msg);
-                    break;
-            }
-        };
+        connect();
+
+        function connect() {
+            ws = new WebSocket(socUrl);
+            ws.onmessage = e => {
+                const msg = JSON.parse(e.data);
+                switch (msg.Type) {
+                    case MessageType.Message:
+                        postMessage(msg);
+                        break;
+                    case MessageType.Notification:
+                        queueNotification(msg);
+                        break;
+                }
+            };
+            ws.onopen = e => {
+                console.log('Connected!');
+            };
+            ws.onclose = e => {
+                console.log('Socket closed. Waiting to reconnect...', e.reason);
+                setTimeout(function () {
+                    connect();
+                }, 2000);
+            };
+        }
 
         function postMessage(msg) {
             const user = getString(msg) ?? "Unknown";

@@ -21,7 +21,8 @@ namespace ChatPingsv2
         public bool CallIn;
         public Dictionary<string, Rewards> AddedRewards;
         public bool AiOn;
-        public int MessageDuration = 3000;
+        public int AiCooldown = 12;
+        public int CommandCooldown = 3;
 
         private bool InCall;
         private DateTime? lastMessage;
@@ -32,16 +33,18 @@ namespace ChatPingsv2
 
         private SpeechSynthesizer synth;
         private Dictionary<string, string> UserVoices;
-        private SoundPlayer synthPlayer;
 
         private Kobold kobold;
         private string streamerName;
+        private DateTime lastAi;
+        private DateTime lastCommand;
 
         private List<CustomCommand> customCommands;
 
         public TwitchBot(Token? token = null) : base(token)
         {
             synth = new SpeechSynthesizer();
+            synth.SetOutputToDefaultAudioDevice();
             UserVoices = new Dictionary<string, string>();
             soundPlayers = new Dictionary<SoundFile, SoundPlayer>();
             this.InitSounds();
@@ -92,7 +95,10 @@ namespace ChatPingsv2
 
         public void StopSynth()
         {
-            synthPlayer.Stop();
+            synth.Pause();
+            synth.Dispose();
+            synth = new SpeechSynthesizer();
+            synth.SetOutputToDefaultAudioDevice();
         }
 
         public void UserHangup()
@@ -143,10 +149,27 @@ namespace ChatPingsv2
             }
         }
 
-        public void AddCustomCommand(string command, string output)
+        public void AddCustomCommand(string command, string output, int cooldown)
         {
-            var cmd = new CustomCommand(command, output);
+            var cmd = new CustomCommand(command, output, cooldown);
             customCommands.Add(cmd);
+            SaveCustomCommands();
+        }
+
+        public void DeleteCustomCommand(string command)
+        {
+            var cmd = customCommands.FirstOrDefault(x => x.Command == command);
+            if (cmd == null)
+            {
+                Console.WriteLine($"Error: Command {command} does not exist!");
+                return;
+            }
+            customCommands.Remove(cmd);
+            SaveCustomCommands();
+        }
+
+        private void SaveCustomCommands()
+        {
             var json = JsonConvert.SerializeObject(customCommands);
             File.WriteAllText(Path.Combine(_filePath, "CustomCommands.json"), json);
         }
@@ -163,7 +186,7 @@ namespace ChatPingsv2
 
         private async Task EventSub_ChannelPointsCustomRewardRedemptionAdd(object? sender, TwitchLib.EventSub.Core.EventArgs.Channel.ChannelPointsCustomRewardRedemptionArgs args)
         {
-            ChannelPointsCustomRewardRedemption _event = args.Payload.Event;
+            ChannelPointsCustomRewardRedemption _event = args.Payload.Event; // TODO: Add overlay notifications for all relavant notifications
             string rewardId = _event.Reward.Id;
             string redemptionId = _event.Id;
             string redeem = _event.Reward.Title;
@@ -174,7 +197,7 @@ namespace ChatPingsv2
             {
                 case "Lose the glasses":
                     synth.SelectVoice("Microsoft David Desktop");
-                    SynthAddAudioPlayer($"{username} redeemed Lose the glasses. Five minute timer started.");// Error while processing EventSub Notification
+                    SynthAddAudioPlayer($"{username} redeemed Lose the glasses. Five minute timer started.");
                     if (InCall) CallTCS.TrySetResult(Closer.Owner);
                     CallIn = false;
                     SetRewardEnabled(AddedRewards["Call-In"].RewardId, false);
@@ -268,7 +291,7 @@ namespace ChatPingsv2
                 if (matches.Count > 0)
                     foreach (Match match in matches) content = content.Replace(match.Groups[1].Value, $"<img src=\"{match.Groups[1].Value}\" class=\"emote\">");
             }
-            if (!config.IgnoreList.Contains(user)) await OverlayServer.Singleton.SendMessage(user, content, args.ChatMessage.ColorHex ?? "#a970ff", MessageDuration);
+            if (!config.IgnoreList.Contains(user)) await OverlayServer.Singleton.SendMessage(user, content, args.ChatMessage.ColorHex ?? "#a970ff"); // TODO: Add user icon.?
 
             if ((lastMessage != null && (DateTime.Now - lastMessage) < TimeSpan.FromSeconds((double)config.MessageCd)) || config.IgnoreList.Contains(user))
                 return;
@@ -286,40 +309,78 @@ namespace ChatPingsv2
         {
             var cmd = e.Command;
             var argsToString = e.Command.ArgumentsAsString;
-            var streamer = Owner.Login;
-            var user = e.Command.ChatMessage.Username;
             Console.WriteLine($"Command received: {cmd.CommandText}");
             switch (cmd.CommandText)
             {
                 case "hangup":
+                    if (!CanExecute()) return;
                     if (cmd.ChatMessage.Username != callInUsername) return;
                     CallTCS.TrySetResult(Closer.User);
                     break;
                 case "lotus":
                     if (kobold == null || !AiOn) return;
+                    if ((DateTime.Now - lastAi).TotalSeconds < AiCooldown) return;
+                    lastAi = DateTime.Now;
+                    var user = e.Command.ChatMessage.Username;
                     var response = await kobold.Chat(user, argsToString);
                     synth.SelectVoice("Microsoft Zira Desktop");
                     SynthAddAudioPlayer(response);
-                    break;
+                    return;
                 case "8ball":
+                    if (!CanExecute()) return;
                     SendMessage($"8Ball: {Magic8Ball.Ask(cmd.ArgumentsAsString)}");
                     break;
                 case "commands":
-                    SendMessage($"Please head over to https://github.com/MachaCeleste/ChatPingsv2/blob/master/ChatPingsv2/commands.md to see all commands available.");
+                    if (!CanExecute()) return;
+                    string output = "hangup, lotus, 8ball, commands";
+                    foreach (CustomCommand c in customCommands) output += $", {c.Command}";
+                    SendMessage(output);
                     break;
                 default:
-                    var command = customCommands.FirstOrDefault(x => x.Command == cmd.CommandText);
-                    if (command == null)
-                    {
-                        Console.WriteLine($"Error: Command {cmd.CommandText} not found!");
-                        break;
-                    }
-                    var msg = command.Output;
-                    msg = msg.Replace("$(streamer)", streamer);
-                    msg = msg.Replace("$(user)", user);
-                    SendMessage(msg);
-                    break;
+                    CustomCommandHandler(e);
+                    return;
             }
+            lastCommand = DateTime.Now;
+        }
+
+        private bool CanExecute()
+        {
+            return (DateTime.Now - lastCommand).TotalSeconds > CommandCooldown;
+        }
+
+        private void CustomCommandHandler(OnChatCommandReceivedArgs e)
+        {
+            var cmd = e.Command;
+            var command = customCommands.FirstOrDefault(x => x.Command == cmd.CommandText);
+            if (command == null)
+            {
+                Console.WriteLine($"Error: Command {cmd.CommandText} not found!");
+                return;
+            }
+            if ((DateTime.Now - command.LastUse).TotalSeconds < command.Cooldown) return;
+            command.LastUse = DateTime.Now;
+            var user = e.Command.ChatMessage.Username;
+            var streamer = Owner.Login;
+            var msg = command.Output;
+            msg = msg.Replace("$(streamer)", streamer);
+            msg = msg.Replace("$(user)", user);
+
+            var tzString = @"\$\(time (\S+)\)";
+            MatchCollection matches = Regex.Matches(msg, tzString);
+            if (matches.Count > 0)
+            {
+                foreach (Match match in matches)
+                {
+                    if (TimeZoneInfo.TryFindSystemTimeZoneById(match.Groups[1].Value, out TimeZoneInfo? tzId))
+                    {
+                        var dt = TimeZoneInfo.ConvertTime(DateTime.UtcNow, tzId);
+                        string time = dt.ToString("hh:mm tt");
+                        msg = msg.Replace(match.Value, time);
+                    }
+                }
+            }
+
+            SendMessage(msg);
         }
 
         private void TryLoadCustomCommands()
@@ -355,17 +416,12 @@ namespace ChatPingsv2
         private void SynthAddAudioPlayer(string message)
         {
             MemoryStream ms = new MemoryStream();
-            synth.SetOutputToWaveStream(ms);
-            //synth.Speak(message); // decided to let the user raw-dog the SSML, what could possibly go wrong
             var msg = @"<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='en-US'>
                             <voice name='" + synth.Voice.Name + @"'>
                                 " + message + @"
                             </voice>
                         </speak>";
-            synth.SpeakSsml(msg);
-            ms.Position = 0;
-            synthPlayer = new SoundPlayer(ms);
-            synthPlayer.PlaySync();
+            synth.SpeakSsmlAsync(msg);
         }
 
         private async Task AddRewards()
@@ -491,11 +547,17 @@ namespace ChatPingsv2
         {
             public string Command { get; set; }
             public string Output { get; set; }
+            public int Cooldown { get; set; }
 
-            public CustomCommand(string command, string output)
+            [JsonIgnore]
+            public DateTime LastUse { get; set; }
+
+            public CustomCommand(string command, string output, int cooldown)
             {
                 Command = command;
                 Output = output;
+                Cooldown = cooldown;
+                LastUse = DateTime.UnixEpoch;
             }
         }
 
