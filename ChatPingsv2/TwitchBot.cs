@@ -49,7 +49,6 @@ namespace ChatPingsv2
             soundPlayers = new Dictionary<SoundFile, SoundPlayer>();
             this.InitSounds();
             new OverlayServer();
-            OverlayServer.Singleton.Start();
             TwitchBot.Singleton = this;
         }
 
@@ -476,6 +475,7 @@ namespace ChatPingsv2
                 AuthScopes.Channel_Read_Redemptions,
                 AuthScopes.Channel_Manage_Redemptions,
                 AuthScopes.Moderator_Read_Followers,
+                //AuthScopes.Channel_Read_Subscriptions,
                 AuthScopes.Channel_Read_Ads,
                 //AuthScopes.Bits_Read,
                 AuthScopes.Chat_Read,
@@ -486,6 +486,8 @@ namespace ChatPingsv2
             new Dictionary<string, int>()
             {
                 { "channel.channel_points_custom_reward_redemption.add", 1 },
+                //{ "channel.subscribe", 1 },
+                //{ "channel.subscription.gift", 1 },
                 { "channel.follow", 2 },
                 { "channel.ad_break.begin", 1 },
                 //{ "channel.cheer", 1 }

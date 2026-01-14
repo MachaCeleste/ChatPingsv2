@@ -9,7 +9,7 @@ namespace ChatPingsv2
 {
     class Program
     {
-        private static string _filePath;
+        private static string _filePath; // TODO: Add system for automated messages
         private static string? _passkey;
         private static readonly ManualResetEventSlim _exit = new ManualResetEventSlim();
         static async Task Main()
@@ -169,10 +169,6 @@ namespace ChatPingsv2
                         Console.WriteLine($"  ----- Settings -----\n" +
                                         $"  Message : {conf.MessageCd}");
                         break;
-                    case "overlay":
-                        OverlayServer.Singleton.IsEnabled = !OverlayServer.Singleton.IsEnabled;
-                        Console.WriteLine($"Overlay {(OverlayServer.Singleton.IsEnabled ? "ENABLED" : "DISABLED")}");
-                        break;
                     case "message":
                         if (x.Length < 2 || int.TryParse(x[1], out int mduration) || mduration < 1)
                         {
@@ -207,7 +203,6 @@ namespace ChatPingsv2
                                         $"     settings : Display all settings\n" +
                                         $"    cls/clear : Clear console\n" +
                                         $"       ----- Overlay -----\n" +
-                                        $"      overlay : Toggle overlay on/off\n" +
                                         $"      message : Set timeout in seconds of messages in the overlay\n" +
                                         $" notification : Set timeout in seconds of notifications in the overlay\n" +
                                         $"       ----- Ignore List -----\n" +
