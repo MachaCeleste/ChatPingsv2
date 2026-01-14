@@ -62,9 +62,6 @@
     <None Update="message.wav">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Update="overlay.html">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
     <None Update="pickup.wav">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
