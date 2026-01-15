@@ -191,6 +191,13 @@ namespace ChatPingsv2
             string redeem = _event.Reward.Title;
             string username = _event.UserName;
             Console.WriteLine($"{DateTime.Now.ToString("hh:mm:ss")}: Redeem: {username}: {redeem}");
+
+            var message = $"{username} redeemed {redeem}";
+            var userInput = _event.UserInput;
+            if (string.IsNullOrEmpty(userInput)) message += $"\n{userInput}";
+
+            OverlayServer.Singleton.SendNotification(redeem, message);
+
             if (AddedRewards.ContainsKey(redeem)) AddedRewards[redeem].RedemtionIds.Add(redemptionId);
             switch (redeem)
             {
@@ -280,17 +287,31 @@ namespace ChatPingsv2
                 SynthAddAudioPlayer(message);
             }
 
+            // Chat overlay handler
             string content = message.Replace("<", "&lt").Replace(">", "&gt");
             string erm = args.ChatMessage.EmoteReplacedMessage;
             if (erm != null)
             {
                 content = erm.Replace("<", "&lt").Replace(">", "&gt");
-                string pattern = @"(https:\/\/static-cdn\.jtvnw\.net\/emoticons\/v\d/\S+/\d\.0)";
+                string pattern = @"https:\/\/static-cdn\.jtvnw\.net\/emoticons\/v\d/\S+/\d\.0";
                 MatchCollection? matches = Regex.Matches(content, pattern);
                 if (matches.Count > 0)
-                    foreach (Match match in matches) content = content.Replace(match.Groups[1].Value, $"<img src=\"{match.Groups[1].Value}\" class=\"emote\">");
+                    foreach (Match match in matches) content = content.Replace(match.Value, $"<img src=\"{match.Value}\" class=\"emote\">");
             }
-            if (!config.IgnoreList.Contains(user)) await OverlayServer.Singleton.SendMessage(user, content, args.ChatMessage.ColorHex ?? "#a970ff"); // TODO: Add user icon.?
+            if (!config.IgnoreList.Contains(user)) await OverlayServer.Singleton.SendMessage(user, content, args.ChatMessage.ColorHex ?? "#a970ff");
+
+            // Emote wall handler
+            var emoteList = args.ChatMessage.EmoteSet.Emotes;
+            if (emoteList.Count > 0)
+            {
+                Dictionary<string, int> data = new Dictionary<string, int>();
+                foreach (var emote in emoteList)
+                {
+                    if (!data.ContainsKey(emote.ImageUrl)) data.Add(emote.ImageUrl, 0);
+                    data[emote.ImageUrl]++;
+                }
+                await OverlayServer.Singleton.SendEmotes(data);
+            }
 
             if ((lastMessage != null && (DateTime.Now - lastMessage) < TimeSpan.FromSeconds((double)config.MessageCd)) || config.IgnoreList.Contains(user))
                 return;
