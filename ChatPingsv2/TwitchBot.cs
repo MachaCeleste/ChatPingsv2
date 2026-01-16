@@ -56,7 +56,6 @@ namespace ChatPingsv2
         {
             try
             {
-                Client.WillReplaceEmotes = true;
                 Client.OnJoinedChannel += Client_OnJoinedChannel;
                 Client.OnMessageReceived += Client_OnMessageReceived;
                 Client.OnChatCommandReceived += Client_OnChatCommandReceived;
@@ -287,31 +286,23 @@ namespace ChatPingsv2
                 SynthAddAudioPlayer(message);
             }
 
-            // Chat overlay handler
-            string content = message.Replace("<", "&lt").Replace(">", "&gt");
-            string erm = args.ChatMessage.EmoteReplacedMessage;
-            if (erm != null)
-            {
-                content = erm.Replace("<", "&lt").Replace(">", "&gt");
-                string pattern = @"https:\/\/static-cdn\.jtvnw\.net\/emoticons\/v\d/\S+/\d\.0";
-                MatchCollection? matches = Regex.Matches(content, pattern);
-                if (matches.Count > 0)
-                    foreach (Match match in matches) content = content.Replace(match.Value, $"<img src=\"{match.Value}\" class=\"emote\">");
-            }
-            if (!config.IgnoreList.Contains(user)) await OverlayServer.Singleton.SendMessage(user, content, args.ChatMessage.ColorHex ?? "#a970ff");
-
-            // Emote wall handler
+            string erm = message.Replace("<", "&lt").Replace(">", "&gt");
             var emoteList = args.ChatMessage.EmoteSet.Emotes;
             if (emoteList.Count > 0)
             {
                 Dictionary<string, int> data = new Dictionary<string, int>();
-                foreach (var emote in emoteList)
+                foreach (var emote in emoteList.OrderByDescending(x => x.StartIndex))
                 {
+                    erm = erm.Remove(emote.StartIndex, emote.EndIndex - emote.StartIndex + 1).Insert(emote.StartIndex, $"<img src=\"{emote.ImageUrl}\" class=\"emote\"></img>");
                     if (!data.ContainsKey(emote.ImageUrl)) data.Add(emote.ImageUrl, 0);
                     data[emote.ImageUrl]++;
                 }
+                // EmoteWall overlay handler
                 await OverlayServer.Singleton.SendEmotes(data);
             }
+
+            // Chat overlay handler
+            if (!config.IgnoreList.Contains(user)) await OverlayServer.Singleton.SendMessage(user, erm, args.ChatMessage.ColorHex ?? "#a970ff");
 
             if ((lastMessage != null && (DateTime.Now - lastMessage) < TimeSpan.FromSeconds((double)config.MessageCd)) || config.IgnoreList.Contains(user))
                 return;
