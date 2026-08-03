@@ -1,9 +1,9 @@
 Dependancies:
 
-- FoxCrypto
-- TwitchBotFramework
-- OverlayFramework
-- KoboldInterface
+- [FoxCrypto](https://github.com/MachaCeleste/FoxCrypto)
+- [TwitchBotFramework](https://github.com/MachaCeleste/TwitchBotFramework)
+- [OverlayFramework](https://github.com/MachaCeleste/OverlayFramework)
+- [KoboldInterface](https://github.com/MachaCeleste/KoboldInterface)
 
 - System.Speech (10.0.0)
 - System.Windows.Extensions (9.0.8)
